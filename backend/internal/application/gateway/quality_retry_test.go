@@ -1990,3 +1990,20 @@ func TestNormalizeQualityRetryDefaults(t *testing.T) {
 		t.Fatalf("defaults = %#v", got)
 	}
 }
+
+// chenyme/grok2api#1058: multi-agent console models never stream visible
+// reasoning, so the missing-thinking hold must not judge them.
+func TestShouldHoldQualityStreamSkipsHiddenReasoningModels(t *testing.T) {
+	t.Parallel()
+	cfg := QualityRetryRuntime{Enabled: true, MaxAttempts: 2, MinOutputTokens: 32}
+	for _, public := range []string{"grok-4.20-multi-agent-0309", "grok-4.20-multi-agent-xhigh", "grok-4.20-multi-agent-console"} {
+		route := modeldomain.Route{Provider: accountdomain.ProviderConsole, UpstreamModel: "grok-4.20-multi-agent-0309", PublicID: public}
+		if shouldHoldQualityStream(Input{Streaming: true, PublicModel: public}, nil, route, audit.OperationResponses, cfg) {
+			t.Fatalf("%s must not be held by the missing-thinking guard", public)
+		}
+	}
+	route := modeldomain.Route{Provider: accountdomain.ProviderBuild, UpstreamModel: "grok-4.6", PublicID: "grok-4.6"}
+	if !shouldHoldQualityStream(Input{Streaming: true, PublicModel: "grok-4.6"}, nil, route, audit.OperationResponses, cfg) {
+		t.Fatal("regular reasoning model must still be held")
+	}
+}

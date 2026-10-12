@@ -463,6 +463,9 @@ func shouldHoldQualityStream(input Input, ownership *inferencedomain.ResponseOwn
 	if qualityRequestDisablesReasoning(input.Body) {
 		return false
 	}
+	if modeldomain.HidesReasoningStreamForProvider(route.Provider, input.PublicModel) || modeldomain.HidesReasoningStreamForProvider(route.Provider, route.UpstreamModel) {
+		return false
+	}
 	if modeldomain.SupportsReasoningForProvider(route.Provider, input.PublicModel) {
 		return true
 	}

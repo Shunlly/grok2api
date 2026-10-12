@@ -173,7 +173,7 @@ qualityGuard:
     # Immediately disable an account on its first confirmed missing-thinking
     # or degraded output-speed hit (soft-TPS, hard-TPS, or buffered-burst).
     # When false, missing-thinking keeps the historical cooldown/second-hit policy.
-    autoDisable: true
+    autoDisable: false
     accountCooldown: 12h
     # Empty SSE / idle-timeout penalty. Independent of accountCooldown.
     # Single-account pools should set this lower; toggling enabled does not
