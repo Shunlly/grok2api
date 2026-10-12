@@ -353,3 +353,12 @@ func splitProviderModel(publicModel string) (account.Provider, string) {
 	}
 	return "", value
 }
+
+// HidesReasoningStreamForProvider reports models that reason upstream but
+// never stream gateway-visible reasoning content (neither text nor encrypted
+// thinking). The quality guard's missing-thinking check cannot judge these and
+// would otherwise flag every healthy response as degraded (chenyme/grok2api#1058).
+func HidesReasoningStreamForProvider(providerValue account.Provider, publicModel string) bool {
+	slug := strings.ToLower(externalModelSlug(publicModel))
+	return strings.HasPrefix(slug, "grok-4.20-multi-agent")
+}

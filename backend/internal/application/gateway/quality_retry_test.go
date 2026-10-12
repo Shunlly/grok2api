@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"math"
 	"net/http"
 	"path/filepath"
@@ -217,6 +218,49 @@ func TestEncryptedThinkingFloorSaturates(t *testing.T) {
 	t.Parallel()
 	if got := encryptedThinkingFloor(256, 16, math.MaxInt64); got != math.MaxInt64 {
 		t.Fatalf("overflowing floor = %d, want %d", got, int64(math.MaxInt64))
+	}
+}
+
+func TestAutoDisableFirstOutputSpeedHit(t *testing.T) {
+	ctx := context.Background()
+	database, err := relational.OpenSQLite(ctx, filepath.Join(t.TempDir(), "output-speed-disable.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if err := database.InitializeSchema(ctx); err != nil {
+		t.Fatal(err)
+	}
+	accounts := relational.NewAccountRepository(database)
+	credential, _, err := accounts.UpsertByIdentity(ctx, accountdomain.Credential{
+		Provider: accountdomain.ProviderBuild, Name: "degraded-speed", SourceKey: "degraded-speed", EncryptedAccessToken: "encrypted",
+		Enabled: true, AuthStatus: accountdomain.AuthStatusActive, Priority: 10, MaxConcurrent: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	selector := NewSelector(accounts, memory.NewConcurrencyLimiter(), memory.NewStickyStore(), nil, time.Hour, time.Second, time.Minute)
+	service := &Service{selector: selector, logger: slog.Default()}
+	firstTokenMS := int64(1_000)
+	record := audit.Record{
+		RequestID: "degraded-speed", Provider: string(accountdomain.ProviderBuild), Streaming: true, StatusCode: http.StatusOK,
+		OutputTokens: 120, FirstTokenMS: &firstTokenMS, DurationMS: 1_300,
+	}
+	cfg := normalizeQualityRetry(QualityRetryRuntime{Enabled: true, AutoDisable: true, MinOutputTokens: 32})
+	if err := service.applyOutputSpeedPenalty(ctx, record, credential, cfg, false); err != nil {
+		t.Fatal(err)
+	}
+	healthy, err := accounts.Get(ctx, credential.ID)
+	if err != nil || !healthy.Enabled {
+		t.Fatalf("below-threshold hit must remain scheduled: %#v, err=%v", healthy, err)
+	}
+	record.DurationMS = 1_200
+	if err := service.applyOutputSpeedPenalty(ctx, record, credential, cfg, false); err != nil {
+		t.Fatal(err)
+	}
+	disabled, err := accounts.Get(ctx, credential.ID)
+	if err != nil || disabled.Enabled {
+		t.Fatalf("first degraded-speed hit must disable: %#v, err=%v", disabled, err)
 	}
 }
 
@@ -1944,5 +1988,22 @@ func TestNormalizeQualityRetryDefaults(t *testing.T) {
 	got := normalizeQualityRetry(QualityRetryRuntime{Enabled: true})
 	if !got.Enabled || got.MaxAttempts != 6 || got.MinOutputTokens != 8 || got.OnExhausted != qualityRetryFailClosed || got.HoldTimeout != 30*time.Second || got.AccountCooldown != 12*time.Hour || got.IdleAccountCooldown != 15*time.Minute || got.MinEncryptedBytes != defaultMinEncryptedBytes || got.EncryptedBytesPerReasoningToken != defaultEncryptedBytesPerReasoningToken {
 		t.Fatalf("defaults = %#v", got)
+	}
+}
+
+// chenyme/grok2api#1058: multi-agent console models never stream visible
+// reasoning, so the missing-thinking hold must not judge them.
+func TestShouldHoldQualityStreamSkipsHiddenReasoningModels(t *testing.T) {
+	t.Parallel()
+	cfg := QualityRetryRuntime{Enabled: true, MaxAttempts: 2, MinOutputTokens: 32}
+	for _, public := range []string{"grok-4.20-multi-agent-0309", "grok-4.20-multi-agent-xhigh", "grok-4.20-multi-agent-console"} {
+		route := modeldomain.Route{Provider: accountdomain.ProviderConsole, UpstreamModel: "grok-4.20-multi-agent-0309", PublicID: public}
+		if shouldHoldQualityStream(Input{Streaming: true, PublicModel: public}, nil, route, audit.OperationResponses, cfg) {
+			t.Fatalf("%s must not be held by the missing-thinking guard", public)
+		}
+	}
+	route := modeldomain.Route{Provider: accountdomain.ProviderBuild, UpstreamModel: "grok-4.6", PublicID: "grok-4.6"}
+	if !shouldHoldQualityStream(Input{Streaming: true, PublicModel: "grok-4.6"}, nil, route, audit.OperationResponses, cfg) {
+		t.Fatal("regular reasoning model must still be held")
 	}
 }
