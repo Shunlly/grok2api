@@ -2,6 +2,21 @@
 
 Shunlly/grok2api fork of [chenyme/grok2api](https://github.com/chenyme/grok2api).
 
+## v3.1.8 — 2026-10-13
+
+### Fixed
+- `/v1/responses` context precheck no longer rejects valid large requests: lower-bound estimate now uses
+  6 chars/token, compares against 1.5x the larger of the catalog/static context window, and skips bodies
+  under 1 MiB (a ~250k-token request was wrongly rejected at an estimated 315k vs the 256k catalog window).
+
+### Added
+- SSE keepalive (`: keepalive` comments every 15s) for streaming `/v1/responses` and `/v1/chat/completions`
+  while waiting for upstream headers (response committed as 200 SSE after 15s; later failures arrive as an
+  in-stream `response.failed` / chat error event) and during upstream silence (only at event boundaries).
+
+### Ops
+- Production Build `responseHeaderTimeout` lowered from 30 min to 5 min (code default already 5 min).
+
 ## v3.1.7 — 2026-10-13
 
 ### Fixed

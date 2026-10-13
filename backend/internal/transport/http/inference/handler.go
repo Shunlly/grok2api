@@ -321,6 +321,12 @@ func (h *Handler) createChatCompletion(c *gin.Context) {
 	}
 	requestID, _ := c.Get(middleware.RequestIDKey)
 	requestIDValue, _ := requestID.(string)
+	var keepalive *sseKeepaliveWriter
+	if request.Stream {
+		var stopKeepalive func()
+		keepalive, stopKeepalive = startSSEKeepalive(c, streamProtocolChat)
+		defer stopKeepalive()
+	}
 	result, err := h.gateway.CreateChatCompletion(c.Request.Context(), gateway.Input{
 		RequestID: requestIDValue, ClientKey: clientKey, PublicModel: request.Model,
 		Body: body, Streaming: request.Stream, PromptCacheKey: request.PromptCacheKey,
@@ -331,6 +337,9 @@ func (h *Handler) createChatCompletion(c *gin.Context) {
 		Path:                      c.Request.URL.Path,
 		Headers:                   c.Request.Header.Clone(),
 	})
+	if keepalive != nil {
+		keepalive.settle()
+	}
 	if err != nil {
 		writeGatewayError(c, err)
 		return
@@ -1171,7 +1180,12 @@ func (h *Handler) handleCreate(c *gin.Context, compact bool) {
 		Headers:                   c.Request.Header.Clone(),
 	}
 	var result *gateway.Result
-	if compact {
+	if request.Stream && !compact {
+		keepalive, stopKeepalive := startSSEKeepalive(c, streamProtocolResponses)
+		defer stopKeepalive()
+		result, err = h.gateway.CreateResponse(c.Request.Context(), input)
+		keepalive.settle()
+	} else if compact {
 		result, err = h.gateway.CompactResponse(c.Request.Context(), input)
 	} else {
 		result, err = h.gateway.CreateResponse(c.Request.Context(), input)
