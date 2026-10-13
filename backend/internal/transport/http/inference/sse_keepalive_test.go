@@ -112,3 +112,24 @@ func TestSSEKeepaliveChatLateError(t *testing.T) {
 		t.Fatalf("chat error conversion: %q", out)
 	}
 }
+
+// Regression: after an early commit, upstream stream chunks that start
+// mid-event must not be mistaken for JSON errors.
+func TestSSEKeepaliveEarlyCommitPassesSplitChunks(t *testing.T) {
+	withFastKeepalive(t)
+	c, rec := newKeepaliveContext()
+	w, stop := startSSEKeepalive(c, streamProtocolResponses)
+	time.Sleep(80 * time.Millisecond)
+	if !w.settle() {
+		t.Fatal("expected early commit")
+	}
+	chunks := []string{"event: response.output_text.delta\ndata: {\"del", "ta\":\"hi\"}\n\n", "event: response.completed\ndata: {\"type\":\"response.completed\"}\n\n"}
+	for _, chunk := range chunks {
+		_, _ = c.Writer.Write([]byte(chunk))
+	}
+	stop()
+	body := rec.body()
+	if strings.Contains(body, "response.failed") || !strings.Contains(body, "{\"delta\":\"hi\"}\n\n") || !strings.HasSuffix(body, "{\"type\":\"response.completed\"}\n\n") {
+		t.Fatalf("split chunks corrupted: %q", body)
+	}
+}
