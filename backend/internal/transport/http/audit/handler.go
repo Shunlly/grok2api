@@ -353,7 +353,9 @@ func (h *Handler) degradeAccounts(c *gin.Context) {
 		auditapp.DegradeThresholds{SoftTPS: softTPS, HardTPS: hardTPS, MinGenMS: minGenMS, FailClosed: failClosed},
 		auditapp.DegradeAccountFilter{
 			Search: c.Query("search"), Status: c.Query("status"), Class: c.Query("class"), MinHits: minHits,
-			Page: page, PageSize: pageSize,
+			// Speed classes are observe-only; list them only when explicitly filtered.
+			DegradedOnly: c.Query("class") == "" || c.Query("class") == auditdomain.DegradeClassThinking,
+			Page:         page, PageSize: pageSize,
 		},
 	)
 	if errors.Is(err, auditapp.ErrInvalidPeriod) {
