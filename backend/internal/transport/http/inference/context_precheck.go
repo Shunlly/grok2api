@@ -17,7 +17,18 @@ import (
 // skipped), and runes are divided by 4 (English averages ~4 chars/token, CJK
 // ~1 char/token). We only reject when that lower bound already exceeds the
 // model's catalog context window; anything else is left for upstream to judge.
-const precheckCharsPerToken = 4
+const (
+	// 6 chars/token is below every realistic tokenizer ratio for code/English
+	// (observed ~4-5) so the estimate stays a lower bound. CJK text tokenizes
+	// at ~1 char/token, which only makes the estimate lower still.
+	precheckCharsPerToken = 6
+	// Only reject when the lower bound exceeds the largest known window by
+	// 50%: upstream has accepted ~360k-token requests while the Build catalog
+	// advertises 256k for grok-4.7, so the catalog value is not a hard limit.
+	precheckWindowSlackPercent = 150
+	// Small bodies can never be over any window; skip parsing them entirely.
+	precheckMinBodyBytes = 1 << 20
+)
 
 var precheckSkippedKeys = map[string]bool{
 	"encrypted_content": true, "image_url": true, "file_data": true, "data": true,
@@ -58,13 +69,23 @@ func estimateResponsesInputTokensLowerBound(body []byte) int {
 // responsesContextOverflow returns a client-facing message when the request is
 // certainly over the model's advertised context window.
 func responsesContextOverflow(model string, body []byte) (string, bool) {
-	profile, ok := modeldomain.UpstreamProfile(model)
-	if !ok || profile.ContextWindow <= 0 {
+	if len(body) < precheckMinBodyBytes {
 		return "", false
 	}
+	window := 0
+	if profile, ok := modeldomain.UpstreamProfile(model); ok {
+		window = profile.ContextWindow
+	}
+	if capability, known := grokCapabilities[model]; known && capability.contextWindow > window {
+		window = capability.contextWindow
+	}
+	if window <= 0 {
+		return "", false
+	}
+	limit := window * precheckWindowSlackPercent / 100
 	estimate := estimateResponsesInputTokensLowerBound(body)
-	if estimate <= profile.ContextWindow {
+	if estimate <= limit {
 		return "", false
 	}
-	return fmt.Sprintf("输入上下文约 %d tokens（保守估计），已超过模型 %s 的上下文窗口 %d tokens。请压缩上下文（如 Codex 的 /compact）或开启新会话后重试。", estimate, model, profile.ContextWindow), true
+	return fmt.Sprintf("输入上下文至少约 %d tokens（保守下限估计），远超模型 %s 的上下文窗口 %d tokens。请压缩上下文（如 Codex 的 /compact）或开启新会话后重试。", estimate, model, window), true
 }
