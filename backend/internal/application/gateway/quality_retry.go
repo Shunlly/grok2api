@@ -438,7 +438,7 @@ func CommitQualityHold(verdict QualityVerdict, qualityAttempt, maxAttempts int, 
 }
 
 func shouldHoldQualityStream(input Input, ownership *inferencedomain.ResponseOwnership, route modeldomain.Route, operation audit.Operation, cfg QualityRetryRuntime) bool {
-	if !cfg.Enabled || !input.Streaming || input.ForcedEgressNodeID != 0 || input.skipQualityHold {
+	if !cfg.Enabled || !input.Streaming || input.ForcedEgressNodeID != 0 || input.CanaryProbe || input.skipQualityHold {
 		return false
 	}
 	switch operation {
@@ -606,10 +606,10 @@ func (s *Service) applyOutputSpeedPenalty(ctx context.Context, record audit.Reco
 	if class == "" {
 		return nil
 	}
-	if err := s.selector.disableAccount(ctx, credential); err != nil {
-		return err
-	}
-	s.logger.Info("quality_degraded_disabled", "request_id", record.RequestID, "account_id", credential.ID, "class", class, "output_tps", tps)
+	// Fast output is informational only: Grok Build frequently reasons silently
+	// and then flushes the visible answer, which looks like extreme Token/s.
+	// It is never used to disable accounts (see canary prober for 降智 detection).
+	s.logger.Info("quality_fast_output_observed", "request_id", record.RequestID, "account_id", credential.ID, "class", class, "output_tps", tps)
 	return nil
 }
 

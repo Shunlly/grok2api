@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Gauge, PowerOff, RefreshCw, Search, Users } from "lucide-react";
 import { useMemo, useState } from "react";
+import i18next from "i18next";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
@@ -82,7 +83,7 @@ export function DegradeAccountsPanel({ softTPS, hardTPS, failClosed, minGenMs }:
         <Metric icon={AlertTriangle} label={t("qualityGuard.degrade.hits")} value={String(data.totals.hits)} detail={t("qualityGuard.degrade.hitsHelp", { burst: data.totals.burst, soft: data.totals.soft, hard: data.totals.hard, thinking: data.totals.thinking })} tone={data.totals.hits ? "bad" : "good"} />
         <Metric icon={Users} label={t("qualityGuard.degrade.accounts")} value={String(data.totals.accounts)} detail={t("qualityGuard.degrade.accountsHelp", { deleted: data.totals.deleted })} />
         <Metric icon={PowerOff} label={t("qualityGuard.degrade.stillEnabled")} value={String(data.totals.stillEnabled)} detail={t("qualityGuard.degrade.stillEnabledHelp")} tone={data.totals.stillEnabled ? "bad" : "good"} />
-        <Metric icon={Gauge} label={t("qualityGuard.degrade.maxTPS")} value={Math.round(data.totals.maxTPS).toString()} detail={t("qualityGuard.degrade.maxTPSHelp")} tone={data.totals.maxTPS >= data.thresholds.hardTPS ? "bad" : undefined} />
+        <Metric icon={Gauge} label={t("qualityGuard.degrade.maxTPS")} value={Math.round(data.totals.maxTPS).toString()} detail={t("qualityGuard.degrade.maxTPSHelp")} tone={undefined} />
       </section>
 
       <div className="grid items-stretch gap-3 xl:grid-cols-[minmax(0,1.4fr)_minmax(260px,0.8fr)]">
@@ -174,7 +175,7 @@ export function DegradeAccountsPanel({ softTPS, hardTPS, failClosed, minGenMs }:
                       {account.bfs ? <Badge variant="outline" className="ml-1 whitespace-nowrap text-muted-foreground">bfs {account.bfs}</Badge> : null}
                     </TableCell>
                     <TableCell className="text-right font-mono tabular-nums">{account.hits}</TableCell>
-                    <TableCell className={cn("text-right font-mono tabular-nums", account.maxTPS >= data.thresholds.hardTPS ? "text-destructive" : account.maxTPS >= data.thresholds.softTPS ? "text-amber-600 dark:text-amber-400" : "")}>{account.maxTPS}</TableCell>
+                    <TableCell className={cn("text-right font-mono tabular-nums")}>{account.maxTPS}</TableCell>
                     <TableCell className="text-xs text-muted-foreground">{classSummary(account.classes)}</TableCell>
                     <TableCell className="text-xs">{account.nodes.join(" · ") || "-"}</TableCell>
                     <TableCell className="font-mono text-xs">{account.last ? formatCompactDateTime(account.last, i18n.language) : "-"}</TableCell>
@@ -228,9 +229,9 @@ function classSummary(classes: DegradeAccountDTO["classes"]) {
 
 function classBadge(cls: DegradeClass) {
   if (cls === "missing_thinking") return <Badge variant="outline" className="text-destructive">thinking</Badge>;
-  if (cls === "hard_tps") return <Badge variant="outline" className="text-destructive">hard</Badge>;
-  if (cls === "buffered_burst") return <Badge variant="outline" className="text-amber-600 dark:text-amber-400">burst</Badge>;
-  return <Badge variant="outline" className="text-muted-foreground">soft</Badge>;
+  // Speed classes are informational "fast output", not degradation.
+  const label = cls === "hard_tps" ? "hard" : cls === "buffered_burst" ? "burst" : "soft";
+  return <Badge variant="outline" className="text-muted-foreground" title={i18next.t("qualityGuard.degrade.fastOutputHelp")}>{i18next.t("qualityGuard.degrade.fastOutput")} · {label}</Badge>;
 }
 
 function FilterSelect({ value, onChange, items }: { value: string; onChange: (value: string) => void; items: string[][] }) {

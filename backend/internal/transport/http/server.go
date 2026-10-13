@@ -11,6 +11,7 @@ import (
 	accountsyncapp "github.com/chenyme/grok2api/backend/internal/application/accountsync"
 	adminauthapp "github.com/chenyme/grok2api/backend/internal/application/adminauth"
 	auditapp "github.com/chenyme/grok2api/backend/internal/application/audit"
+	canaryapp "github.com/chenyme/grok2api/backend/internal/application/canary"
 	clientkeyapp "github.com/chenyme/grok2api/backend/internal/application/clientkey"
 	dashboardapp "github.com/chenyme/grok2api/backend/internal/application/dashboard"
 	egressapp "github.com/chenyme/grok2api/backend/internal/application/egress"
@@ -22,6 +23,7 @@ import (
 	accounthttp "github.com/chenyme/grok2api/backend/internal/transport/http/account"
 	adminauthhttp "github.com/chenyme/grok2api/backend/internal/transport/http/adminauth"
 	audithttp "github.com/chenyme/grok2api/backend/internal/transport/http/audit"
+	canaryhttp "github.com/chenyme/grok2api/backend/internal/transport/http/canary"
 	clientkeyhttp "github.com/chenyme/grok2api/backend/internal/transport/http/clientkey"
 	dashboardhttp "github.com/chenyme/grok2api/backend/internal/transport/http/dashboard"
 	egresshttp "github.com/chenyme/grok2api/backend/internal/transport/http/egress"
@@ -66,6 +68,7 @@ type Dependencies struct {
 	QualityGuardToken      string
 	QualityGuardProbe      egressapp.QualityProbeInput
 	Updates                *updatecheckapp.Service
+	Canary                 *canaryapp.Service
 }
 
 type ReadinessComponent struct {
@@ -159,6 +162,7 @@ func New(deps Dependencies) *gin.Engine {
 	settingshttp.NewHandler(deps.Settings).Register(adminProtected)
 	egressHandler := egresshttp.NewHandler(deps.Egress, deps.QualityGuardStatePath, deps.QualityGuardConfigPath).WithQualityGuardProbe(deps.QualityGuardProbe)
 	egressHandler.Register(adminProtected)
+	canaryhttp.NewHandler(deps.Canary).Register(adminProtected)
 	systemhttp.NewHandler(func() string {
 		if deps.Settings != nil {
 			return deps.Settings.PublicAPIBaseURL()

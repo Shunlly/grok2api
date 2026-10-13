@@ -30,7 +30,7 @@ func TestClassifyOutputSpeed(t *testing.T) {
 				if genMS != test.duration {
 					t.Fatalf("genMS = %d, want duration %d", genMS, test.duration)
 				}
-				want := float64(test.output) * 1000 / float64(test.duration)
+				want := float64(test.output-test.reasoning) * 1000 / float64(test.duration)
 				if tps != want {
 					t.Fatalf("tps = %v, want %v", tps, want)
 				}

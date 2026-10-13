@@ -28,17 +28,17 @@ func TestQualityProbeOutputTokensPerSecondMatchesAuditPanel(t *testing.T) {
 	got := qualityProbeOutputTokensPerSecond(1335, 1200, 17320, 17100)
 	// 17100ms wait vs 220ms tail: use full duration so buffered thinking is
 	// not crushed into the flush window.
-	want := float64(1335) * 1000 / 17320
+	want := float64(1335-1200) * 1000 / 17320
 	if got != want {
 		t.Fatalf("output TPS = %v, want %v", got, want)
 	}
 }
 
-func TestQualityProbeOutputTokensPerSecondIncludesReasoningTokens(t *testing.T) {
+func TestQualityProbeOutputTokensPerSecondExcludesReasoningTokens(t *testing.T) {
 	// The panel reports completion/output tokens, including reasoning tokens.
 	// 100ms tail after 1000ms wait is a short flush, so the window is duration.
 	got := qualityProbeOutputTokensPerSecond(1050, 1000, 1100, 1000)
-	want := float64(1050) * 1000 / 1100
+	want := float64(1050-1000) * 1000 / 1100
 	if got != want {
 		t.Fatalf("output TPS = %v, want %v", got, want)
 	}

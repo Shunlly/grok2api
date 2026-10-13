@@ -322,3 +322,31 @@ export function getDegradeAccounts(input: {
   if (input.minHits && input.minHits > 1) query.set("minHits", String(input.minHits));
   return apiRequest(`/api/admin/v1/request-audits/degrade-accounts?${query}`, {}, decodeDegradeSummary);
 }
+
+export type CanaryStatus = "pass" | "fail" | "error" | "skipped";
+export interface CanaryResultDTO {
+  id: number; roundId: string; trigger: string; accountId: number; accountName: string; model: string;
+  promptId: string; promptKind: string; status: CanaryStatus; reasons: string; score: number; correct: boolean;
+  reasoningTokens: number; outputTokens: number; visibleChars: number; poolMedianReasoning: number;
+  firstTokenMs: number; durationMs: number; consecutiveFails: number; suspect: boolean; error?: string; requestId: string; createdAt: string;
+}
+export interface CanaryAccountDTO { accountId: number; accountName: string; latest: CanaryResultDTO; history: CanaryResultDTO[]; passRate: number; avgScore: number }
+export interface CanarySummaryDTO {
+  enabled: boolean; observeOnly: boolean; interval: string; model: string; reasoningEffort: string; maxOutputTokens: number;
+  suspectAfter: number; running: boolean; activeRound?: string; lastRun?: string; nextRun?: string; accounts: CanaryAccountDTO[];
+}
+
+const isCanaryResult = hasShape({ id: isNumber, accountId: isNumber, status: isString, score: isNumber, reasoningTokens: isNumber, createdAt: isString });
+const decodeCanarySummary = createObjectDecoder<CanarySummaryDTO>("canary summary", {
+  enabled: isBoolean, observeOnly: isBoolean, interval: isString, model: isString, suspectAfter: isNumber, running: isBoolean,
+  lastRun: isOptional(isString), nextRun: isOptional(isString),
+  accounts: isArrayOf(hasShape({ accountId: isNumber, accountName: isString, latest: isCanaryResult, history: isArrayOf(isCanaryResult), passRate: isNumber, avgScore: isNumber })),
+});
+
+export function getCanarySummary(): Promise<CanarySummaryDTO> {
+  return apiRequest("/api/admin/v1/quality/canary?history=12", {}, decodeCanarySummary);
+}
+
+export function runCanaryRound(): Promise<{ roundId: string }> {
+  return apiRequest("/api/admin/v1/quality/canary/run", { method: "POST" }, createObjectDecoder("canary run", { roundId: isString }));
+}

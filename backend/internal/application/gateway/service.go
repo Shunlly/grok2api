@@ -129,6 +129,10 @@ type Input struct {
 	// ForcedAccountID is paired with ForcedEgressNodeID only by the internal
 	// Quality Guard recovery path. It never accepts public request input.
 	ForcedAccountID uint64
+	// CanaryProbe marks the internal observe-only account canary: it pins
+	// ForcedAccountID on the account's own egress (no forced node) and skips
+	// the quality hold. Never set from client input.
+	CanaryProbe bool
 }
 
 type Usage struct {
@@ -1221,14 +1225,14 @@ attemptLoop:
 		var err error
 		selectionStarted := time.Now()
 		if input.ForcedAccountID != 0 {
-			if input.ForcedEgressNodeID == 0 {
+			if input.ForcedEgressNodeID == 0 && !input.CanaryProbe {
 				err = &SelectionUnavailableError{Reason: SelectionNoAccounts}
 			} else {
 				lease, err = s.selector.AcquirePinnedForQualityProbe(ctx, route.Provider, input.ForcedAccountID, route.ID, route.UpstreamModel, quotaMode, accountScope)
 				// An unbound account can still have reached the observed node through
 				// runtime pool selection. The Provider request below carries the forced
 				// node explicitly; only a conflicting concrete binding is invalid.
-				if err == nil && lease.Credential.EgressNodeID != 0 && lease.Credential.EgressNodeID != input.ForcedEgressNodeID {
+				if err == nil && input.ForcedEgressNodeID != 0 && lease.Credential.EgressNodeID != 0 && lease.Credential.EgressNodeID != input.ForcedEgressNodeID {
 					lease.Release()
 					lease = nil
 					err = &SelectionUnavailableError{Reason: SelectionNoAccounts}

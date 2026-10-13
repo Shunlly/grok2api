@@ -54,9 +54,12 @@ var schemaModels = []any{
 	&mediaAssetModel{},
 	&mediaUploadTicketModel{},
 	&runtimeSettingsModel{},
+	&canaryProbeModel{},
 }
 
 var schemaIndexes = []string{
+	"CREATE INDEX IF NOT EXISTS idx_canary_probe_account_created ON canary_probe_results(account_id, created_at DESC, id DESC)",
+	"CREATE INDEX IF NOT EXISTS idx_canary_probe_round ON canary_probe_results(round_id)",
 	"CREATE INDEX IF NOT EXISTS idx_admin_sessions_admin_created ON admin_sessions(admin_id, created_at DESC, id DESC)",
 	"CREATE INDEX IF NOT EXISTS idx_admin_sessions_expires ON admin_sessions(expires_at)",
 	// SQLite 通过重建表修改 CHECK 约束，重建会删除独立存储的 GORM 唯一索引；

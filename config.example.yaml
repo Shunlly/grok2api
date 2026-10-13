@@ -125,6 +125,20 @@ audit:
 
 # [按需启用] Grok Build 出口质量守护。仅配置后仍不会自动启动 sidecar；
 # 使用 docker compose --profile quality-guard up -d --build 启动。
+# Observe-only per-account canary prober (v3.2.0). Every interval each enabled
+# Build account gets the same rotating fixed task (known-answer reasoning or
+# SVG structure) and is scored against the pool. Results are shown under
+# 质量守护 → 金丝雀探测 and NEVER affect routing, cooldown or enablement.
+canary:
+  enabled: false
+  interval: 2h
+  initialDelay: 10m
+  model: grok-4.7
+  reasoningEffort: high
+  maxOutputTokens: 6000
+  probeTimeout: 5m
+  retentionDays: 30
+
 qualityGuard:
   enabled: false
   # 主程序会自动创建并复用不可导出的内部探测身份，无需配置 Client Key。

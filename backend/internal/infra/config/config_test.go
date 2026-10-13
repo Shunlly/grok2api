@@ -172,7 +172,7 @@ bootstrapAdmin:
 	if cfg.Audit.LedgerMode != "enforce" || cfg.Audit.LedgerFailureThreshold != 1 {
 		t.Fatalf("audit ledger defaults = %#v", cfg.Audit)
 	}
-	if cfg.Provider.Build.ResponseHeaderTimeout.Value() != 5*time.Minute {
+	if cfg.Provider.Build.ResponseHeaderTimeout.Value() != 20*time.Minute {
 		t.Fatalf("Build response header timeout = %s", cfg.Provider.Build.ResponseHeaderTimeout.Value())
 	}
 	expectedDatabasePath := filepath.Join(dir, "data", "backend.db")

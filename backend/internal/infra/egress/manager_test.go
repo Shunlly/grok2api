@@ -88,7 +88,7 @@ func TestBuildResponseHeaderTimeoutHotUpdateRebuildsCachedClients(t *testing.T) 
 	if _, err := manager.clientFor(1, domain.ScopeBuild, "", "", "", false, ""); err != nil {
 		t.Fatal(err)
 	}
-	if len(observed) != 2 || observed[0] != 5*time.Minute || observed[1] != 7*time.Minute {
+	if len(observed) != 2 || observed[0] != 20*time.Minute || observed[1] != 7*time.Minute {
 		t.Fatalf("observed timeouts = %v", observed)
 	}
 }
