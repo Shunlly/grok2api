@@ -110,6 +110,61 @@ const (
 	AuthStatusReauthRequired AuthStatus = "reauthRequired"
 )
 
+// DisabledSource records why an account is enabled=false.
+type DisabledSource string
+
+const (
+	DisabledSourceNone        DisabledSource = ""
+	DisabledSourceAdmin       DisabledSource = "admin"
+	DisabledSourceAutoQuality DisabledSource = "auto_quality"
+	DisabledSourceAutoAuth    DisabledSource = "auto_auth"
+)
+
+// EffectiveDisabledSource treats legacy disabled rows without a source as admin.
+func EffectiveDisabledSource(enabled bool, source DisabledSource) DisabledSource {
+	if enabled {
+		return DisabledSourceNone
+	}
+	if source == DisabledSourceNone {
+		return DisabledSourceAdmin
+	}
+	return source
+}
+
+// ReauthKind classifies reauthRequired accounts for automatic re-activation.
+type ReauthKind string
+
+const (
+	ReauthKindNone      ReauthKind = ""
+	ReauthKindTransient ReauthKind = "transient"
+	ReauthKindPermanent ReauthKind = "permanent"
+)
+
+// ClassifyReauthReason maps a reauth reason to transient/permanent. Bans,
+// policy-matched 403s and permanently revoked refresh tokens are permanent;
+// a generic credential rejection may be a transient upstream auth hiccup.
+func ClassifyReauthReason(reason string, refreshPermanent bool) ReauthKind {
+	if refreshPermanent {
+		return ReauthKindPermanent
+	}
+	lower := strings.ToLower(reason)
+	for _, marker := range []string{"blocked", "banned", "suspended", "invalidation policy", "permanent", "primary endpoint denied", "oauth refresh failed:", "revoked", "永久"} {
+		if strings.Contains(lower, marker) {
+			return ReauthKindPermanent
+		}
+	}
+	return ReauthKindTransient
+}
+
+// RecoveryBackoffSchedule is the delay before recovery attempt N+1 (10m, 30m, 2h, 6h, 24h, then 24h).
+var RecoveryBackoffSchedule = [...]time.Duration{10 * time.Minute, 30 * time.Minute, 2 * time.Hour, 6 * time.Hour, 24 * time.Hour}
+
+// RecoveryBackoff returns the wait after `attempts` failed recovery probes.
+func RecoveryBackoff(attempts int) time.Duration {
+	index := min(max(attempts, 0), len(RecoveryBackoffSchedule)-1)
+	return RecoveryBackoffSchedule[index]
+}
+
 // LastErrorMissingThinking values are durable, non-sensitive quality strike
 // markers. Unlike arbitrary upstream errors, they may be propagated through
 // runtime invalidation events so every gateway instance preserves the strike.
@@ -170,18 +225,27 @@ type Credential struct {
 	Enabled                      bool
 	AuthStatus                   AuthStatus
 	// ReauthMarkedAt 仅在切入 reauthRequired 时写入；恢复 active 时清空。自动清理以该时刻为 minAge 锚点。
-	ReauthMarkedAt   *time.Time
-	Priority         int
-	MaxConcurrent    int
-	MinimumRemaining float64
-	FailureCount     int
-	CooldownUntil    *time.Time
-	LastError        string
-	LastUsedAt       *time.Time
-	ObservedModel    string
-	ObservedModelAt  *time.Time
-	WebTier          WebTier
-	WebTierSyncedAt  *time.Time
+	ReauthMarkedAt *time.Time
+	// DisabledSource / DisabledReason explain enabled=false (admin, auto_quality, auto_auth).
+	DisabledSource DisabledSource
+	DisabledReason string
+	// ReauthKind and the Recovery* fields drive the automatic re-activation scheduler.
+	ReauthKind          ReauthKind
+	RecoveryAttempts    int
+	RecoveryNextCheckAt *time.Time
+	RecoveryLastCheckAt *time.Time
+	RecoveryLastError   string
+	Priority            int
+	MaxConcurrent       int
+	MinimumRemaining    float64
+	FailureCount        int
+	CooldownUntil       *time.Time
+	LastError           string
+	LastUsedAt          *time.Time
+	ObservedModel       string
+	ObservedModelAt     *time.Time
+	WebTier             WebTier
+	WebTierSyncedAt     *time.Time
 	// EgressIdentity 是不含凭据和个人信息的稳定出口身份。
 	// 关联到同一 Web 账号的 Build/Console 只共享该值，不共享任何运行状态。
 	EgressIdentity string

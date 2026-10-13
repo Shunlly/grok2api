@@ -38,6 +38,7 @@ import {
   acceptWebAccountTerms,
   cleanupAccounts,
   clearAccountCooldown,
+  recheckAccount,
   clearAccountModelQuotaBlocks,
   deleteAccount,
   deleteAccounts,
@@ -514,6 +515,16 @@ export function AccountsPage() {
     onSuccess: () => {
       invalidateAccountData();
       toast.success(t("accounts.authRefreshed"));
+    },
+    onError: showError,
+  });
+
+  const recheckMutation = useMutation({
+    mutationFn: recheckAccount,
+    onSuccess: (data) => {
+      invalidateAccountData();
+      if (data.result.outcome === "reactivated" || data.result.outcome === "healthy") toast.success(data.result.message);
+      else toast.info(data.result.message);
     },
     onError: showError,
   });
@@ -1547,6 +1558,9 @@ export function AccountsPage() {
                             />
                           ) : null}
                           {provider === "grok_build" ? <DropdownMenuItem onClick={() => tokenMutation.mutate(account.id)}><RotateCw />{t("accounts.refreshToken")}</DropdownMenuItem> : null}
+                          <DropdownMenuItem onClick={() => recheckMutation.mutate(account.id)} disabled={recheckMutation.isPending}>
+                            <RotateCw />{t("accounts.recheck")}
+                          </DropdownMenuItem>
                           {account.cooldownUntil && new Date(account.cooldownUntil) > new Date() ? (
                             <DropdownMenuItem onClick={() => clearCooldownMutation.mutate(account.id)} disabled={clearCooldownMutation.isPending}>
                               <TimerOff />{t("accounts.clearCooldown")}
@@ -2372,18 +2386,45 @@ function AccountTypeText({ label, title, variant }: { label: string; title?: str
   return <span title={title ?? label} className={cn("max-w-32 truncate text-xs font-medium", variant === "free" ? "text-emerald-700 dark:text-emerald-300" : "text-primary")}>{label}</span>;
 }
 
+function RecoveryDetails({ account }: { account: AccountDTO }) {
+  const { t, i18n } = useTranslation();
+  const label = "text-primary-foreground/60";
+  const sourceLabel = account.disabledSource === "auto_quality"
+    ? t("accounts.recoverySourceAutoQuality")
+    : account.disabledSource === "auto_auth" ? t("accounts.recoverySourceAutoAuth") : t("accounts.recoverySourceAdmin");
+  return (
+    <>
+      {!account.enabled ? <><span className={label}>{t("accounts.recoverySource")}</span><span>{sourceLabel}</span></> : null}
+      {account.disabledReason ? <><span className={label}>{t("accounts.recoveryReason")}</span><span className="break-words">{account.disabledReason}</span></> : null}
+      {account.authStatus === "reauthRequired" && account.lastError ? <><span className={label}>{t("accounts.recoveryReason")}</span><span className="break-words">{account.lastError}</span></> : null}
+      {account.reauthKind ? <><span className={label}>{t("accounts.recoveryKind")}</span><span>{account.reauthKind === "permanent" ? t("accounts.recoveryKindPermanent") : t("accounts.recoveryKindTransient")}</span></> : null}
+      {account.recoveryAttempts ? <><span className={label}>{t("accounts.recoveryAttempts")}</span><span>{account.recoveryAttempts}</span></> : null}
+      {account.recoveryNextCheckAt ? <><span className={label}>{t("accounts.recoveryNextCheck")}</span><span>{formatDateTime(account.recoveryNextCheckAt, i18n.language)}</span></> : null}
+      {account.recoveryLastError ? <><span className={label}>{t("accounts.recoveryLastError")}</span><span className="break-words">{account.recoveryLastError}</span></> : null}
+    </>
+  );
+}
+
 function AccountStatus({ account }: { account: AccountDTO }) {
   const { t, i18n } = useTranslation();
   if (!account.enabled) {
-    return <Badge variant="outline" className="text-muted-foreground">{t("accounts.statusDisabled")}</Badge>;
-  }
-  if (account.authStatus === "reauthRequired") {
-    const refreshErrorDetails = formatAdditionalRefreshErrorDetails(account);
-    const hasRefreshError = Boolean(account.lastRefreshErrorStatus || account.lastRefreshErrorCode || account.lastRefreshErrorMessage || refreshErrorDetails);
-    if (!hasRefreshError) return <Badge variant="destructive">{t("accounts.statusReauthRequired")}</Badge>;
+    const badge = <Badge variant="outline" className="text-muted-foreground">{t("accounts.statusDisabled")}{account.disabledSource && account.disabledSource !== "admin" ? " · " + t("accounts.recoveryTitle") : ""}</Badge>;
     return (
       <StatusTooltip content={(
         <div className="grid w-72 max-w-[calc(100vw-2rem)] grid-cols-[4.5rem_minmax(0,1fr)] gap-x-3 gap-y-1 text-xs font-normal leading-5">
+          <RecoveryDetails account={account} />
+        </div>
+      )}>
+        {badge}
+      </StatusTooltip>
+    );
+  }
+  if (account.authStatus === "reauthRequired") {
+    const refreshErrorDetails = formatAdditionalRefreshErrorDetails(account);
+    return (
+      <StatusTooltip content={(
+        <div className="grid w-72 max-w-[calc(100vw-2rem)] grid-cols-[4.5rem_minmax(0,1fr)] gap-x-3 gap-y-1 text-xs font-normal leading-5">
+          <RecoveryDetails account={account} />
           {account.lastRefreshErrorStatus ? <><span className="text-primary-foreground/60">{t("accounts.refreshErrorStatus")}</span><span>{account.lastRefreshErrorStatus}</span></> : null}
           {account.lastRefreshErrorCode ? <><span className="text-primary-foreground/60">{t("accounts.refreshErrorCode")}</span><span className="break-all">{account.lastRefreshErrorCode}</span></> : null}
           {account.lastRefreshErrorMessage ? <><span className="text-primary-foreground/60">{t("accounts.refreshErrorMessage")}</span><span className="break-words">{account.lastRefreshErrorMessage}</span></> : null}

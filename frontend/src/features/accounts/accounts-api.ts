@@ -102,6 +102,13 @@ export type AccountDTO = {
   failureCount: number;
   cooldownUntil?: string;
   lastError?: string;
+  disabledSource?: "admin" | "auto_quality" | "auto_auth";
+  disabledReason?: string;
+  reauthKind?: "transient" | "permanent";
+  recoveryAttempts?: number;
+  recoveryNextCheckAt?: string;
+  recoveryLastCheckAt?: string;
+  recoveryLastError?: string;
   enabledDoesNotClearCooldown?: boolean;
   lastUsedAt?: string;
   linkedAccountId?: string;
@@ -196,6 +203,9 @@ const accountValidator = hasShape({
   lastRefreshErrorStatus: isOptional(isNumber), lastRefreshErrorCode: isOptional(isString), lastRefreshErrorMessage: isOptional(isString), lastRefreshErrorResponse: isOptional(isString), priority: isNumber, maxConcurrent: isNumber, minimumRemaining: isNumber,
   failureCount: isNumber, cooldownUntil: isOptional(isString), lastError: isOptional(isString), lastUsedAt: isOptional(isString),
   enabledDoesNotClearCooldown: isOptional(isBoolean),
+  disabledSource: isOptional(isOneOf("admin", "auto_quality", "auto_auth")), disabledReason: isOptional(isString),
+  reauthKind: isOptional(isOneOf("transient", "permanent")), recoveryAttempts: isOptional(isNumber),
+  recoveryNextCheckAt: isOptional(isString), recoveryLastCheckAt: isOptional(isString), recoveryLastError: isOptional(isString),
   linkedAccountId: isOptional(isString), linkedAccountName: isOptional(isString), linkedProvider: isOptional(isOneOf("grok_build", "grok_web")), linkedAccounts: isOptional(isArrayOf(linkedAccountValidator)),
   createdAt: isString, billing: isOptional(billingValidator), quota: quotaValidator, quotaWindows: isOptional(isArrayOf(quotaWindowValidator)),
   modelQuotaBlocks: isOptional(isArrayOf(hasShape({ model: isString, reason: isString, cooldownUntil: isString }))),
@@ -315,6 +325,20 @@ export function refreshAccountToken(id: string): Promise<AccountDTO> {
 
 export function clearAccountModelQuotaBlocks(id: string): Promise<{ cleared: number }> {
   return apiRequest(`/api/admin/v1/accounts/${id}/model-quota-blocks`, { method: "DELETE" }, decodeCountResult<{ cleared: number }>("cleared"));
+}
+
+export type AccountRecheckDTO = {
+  result: { accountId: string; outcome: "reactivated" | "healthy" | "failed" | "permanent" | "skipped"; message: string; attempts: number; nextCheckAt?: string };
+  account: AccountDTO;
+};
+
+const decodeAccountRecheck = createObjectDecoder<AccountRecheckDTO>("account recheck", {
+  result: hasShape({ accountId: isOptional(isString), outcome: isOneOf("reactivated", "healthy", "failed", "permanent", "skipped"), message: isString, attempts: isNumber, nextCheckAt: isOptional(isString) }),
+  account: accountValidator,
+});
+
+export function recheckAccount(id: string): Promise<AccountRecheckDTO> {
+  return apiRequest(`/api/admin/v1/accounts/${id}/recheck`, { method: "POST" }, decodeAccountRecheck);
 }
 
 export function clearAccountCooldown(id: string): Promise<AccountDTO> {

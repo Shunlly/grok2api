@@ -152,6 +152,50 @@ func (s *Service) RunRound(ctx context.Context, trigger string) ([]canary.Result
 	return s.runRoundLocked(ctx, roundID, trigger)
 }
 
+// ProbeAccount runs one canary task against a single account (used by the
+// re-activation scheduler) and stores the result with trigger "recovery".
+// Without a pool to compare against, only the absolute thresholds apply.
+func (s *Service) ProbeAccount(ctx context.Context, accountID uint64, accountName string) (canary.Result, error) {
+	roundID, err := newRoundID()
+	if err != nil {
+		return canary.Result{}, err
+	}
+	sequence, err := s.store.CountRounds(ctx)
+	if err != nil {
+		return canary.Result{}, err
+	}
+	prompt := canary.PromptForRound(sequence)
+	for offset := int64(1); prompt.Kind == canary.KindSVG && offset < int64(len(canary.Prompts)); offset++ {
+		prompt = canary.PromptForRound(sequence + offset)
+	}
+	result := canary.Result{
+		RoundID: roundID, Trigger: "recovery", AccountID: accountID, AccountName: accountName,
+		Model: s.cfg.Model, PromptID: prompt.ID, PromptKind: prompt.Kind, CreatedAt: time.Now().UTC(),
+	}
+	probeCtx, cancel := context.WithTimeout(ctx, s.cfg.ProbeTimeout)
+	out, probeErr := s.prober.ProbeAccountCanary(probeCtx, gatewayapp.CanaryProbeInput{
+		ClientKeyID: s.clientKeyID, AccountID: accountID, Model: s.cfg.Model, Prompt: prompt.Text,
+		ReasoningEffort: s.cfg.ReasoningEffort, MaxOutputTokens: s.cfg.MaxOutputTokens,
+	})
+	cancel()
+	result.RequestID = out.RequestID
+	if probeErr != nil {
+		result.Status = canary.StatusError
+		result.Error = truncate(probeErr.Error(), 500)
+	} else {
+		result.ReasoningTokens, result.OutputTokens, result.VisibleChars = out.ReasoningTokens, out.OutputTokens, out.VisibleChars
+		result.FirstTokenMS, result.DurationMS = out.FirstTokenMS, out.DurationMS
+		correct, reason := canary.CheckAnswer(prompt, out.Text)
+		canary.Score(&result, prompt, correct, reason, 0)
+	}
+	stored, err := s.store.Create(ctx, result)
+	if err != nil {
+		return result, err
+	}
+	s.logger.Info("canary_recovery_probe_result", "account_id", accountID, "status", stored.Status, "score", stored.Score, "reasons", stored.Reasons, "error", stored.Error)
+	return stored, probeErr
+}
+
 func newRoundID() (string, error) {
 	token, err := security.NewOpaqueToken(6)
 	if err != nil {

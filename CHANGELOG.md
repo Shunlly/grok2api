@@ -2,6 +2,18 @@
 
 Shunlly/grok2api fork of [chenyme/grok2api](https://github.com/chenyme/grok2api).
 
+## v3.3.0 — 2026-10-14
+
+### Added
+- **账号自动恢复（自动重新激活）**：新后台任务每 10 分钟检查一次，只处理被判定为「临时失效」的 `reauthRequired` 账号（如上游偶发 `401 Authentication required`、凭据被拒）。Build 账号先强制刷新 OAuth token，再做一次只读的账单/额度请求；通过即恢复为 `active`。
+  - 失败退避 10m → 30m → 2h → 6h → 24h（带随机抖动），一次只探测一个账号，约 5 天（`maxAge`）或遇到封禁 / 策略 403 / 永久 refresh 错误码后转为「永久」并停止。
+  - **永不触碰**：管理员手动停用的账号、永久失效账号、`refresh_permanent` 凭据。被吊销或封禁的凭据无法被正当恢复，需要重新登录或导入。
+  - 质量检测自动停用（`auto_quality`）的账号默认不处理；开启 `autoReactivate.includeQualityDisabled` 后，会在冷却保护下用金丝雀考题单独探测，通过才重新启用。
+- **失效原因记录**：账号新增 `disabled_source`（admin / auto_quality / auto_auth）、`disabled_reason`、`reauth_kind`（transient / permanent）以及重检次数、下次/上次重检时间、最近结果字段（启动时自动迁移；旧的停用账号视为管理员停用）。
+- **面板**：状态列悬停显示停用来源、原因、失效类型、重检次数、下次重检时间和最近结果；行菜单新增「立即重检」（`POST /api/admin/v1/accounts/:id/recheck`）。对正常账号只做只读校验，不改任何状态。
+- **状态变更日志**：`account_state_changed`（from / to / reason / reauth_kind）、`account_recovery_probe_failed`、`account_recovery_quality_failed`。
+- 配置：`config.yaml` 顶层 `autoReactivate.enabled`（默认 true）、`interval`、`maxAge`、`includeQualityDisabled`（默认 false）。
+
 ## v3.2.3 — 2026-10-13
 
 ### Changed

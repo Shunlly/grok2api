@@ -443,6 +443,11 @@ type Service struct {
 	autoCleanRevision      uint64
 	autoCleanWake          chan struct{}
 	excludeBuildBotFlagged bool
+	recoveryMu             sync.Mutex
+	recoveryProbeMu        sync.Mutex
+	autoReactivate         AutoReactivateConfig
+	qualityRecheck         QualityRecheckFunc
+	recoveryProbe          RecoveryProbeFunc
 	buildBotFlagCache      *resultcache.Cache[string, []uint64]
 	logger                 *slog.Logger
 	now                    func() time.Time
@@ -499,6 +504,7 @@ func NewService(accounts repository.AccountRepository, audits repository.AuditRe
 			Enabled: false, Interval: 10 * time.Minute, MinAge: time.Hour, IncludeDisabled: false,
 		},
 		autoCleanWake:     make(chan struct{}, 1),
+		autoReactivate:    normalizeAutoReactivateConfig(AutoReactivateConfig{Enabled: true}),
 		buildBotFlagCache: resultcache.New[string, []uint64](1, buildBotFlagCacheTTL),
 		conversionPool:    batch.NewPool(25), syncPool: batch.NewPool(25), refreshPool: batch.NewPool(25), detectPool: batch.NewPool(32),
 		logger: slog.Default(),
@@ -2383,13 +2389,18 @@ func (s *Service) MarkReauthRequired(ctx context.Context, id uint64, reason stri
 	if err != nil {
 		return mapRepositoryError(err)
 	}
+	previous := value
 	value.AuthStatus = accountdomain.AuthStatusReauthRequired
 	value.LastError = reason
 	if len(value.LastError) > 512 {
 		value.LastError = value.LastError[:512]
 	}
+	applyReauthClassification(&value, previous, reason, s.now())
 	if _, err := s.accounts.Update(ctx, value); err != nil {
 		return mapRepositoryError(err)
+	}
+	if previous.AuthStatus != accountdomain.AuthStatusReauthRequired || previous.ReauthKind != value.ReauthKind {
+		s.logAccountStateChange(value, string(previous.AuthStatus), "reauthRequired", reason)
 	}
 	if s.sticky != nil {
 		_ = s.sticky.DeleteByAccount(ctx, id)

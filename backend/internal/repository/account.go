@@ -13,6 +13,28 @@ type AccountUpdates struct {
 	Priority         *int
 	MaxConcurrent    *int
 	MinimumRemaining *float64
+	// DisabledSource / DisabledReason apply only when Enabled is false; empty means admin.
+	DisabledSource account.DisabledSource
+	DisabledReason string
+}
+
+// AccountRecoveryState is the bookkeeping persisted by the re-activation scheduler.
+type AccountRecoveryState struct {
+	ReauthKind  account.ReauthKind
+	Attempts    int
+	NextCheckAt *time.Time
+	LastCheckAt *time.Time
+	LastError   string
+}
+
+// AccountRecoveryRepository is the optional persistence used by automatic re-activation.
+type AccountRecoveryRepository interface {
+	// ListRecoveryCandidateIDs returns transient reauthRequired accounts (and, when
+	// includeQuality, auto_quality-disabled accounts) whose next check is due.
+	ListRecoveryCandidateIDs(ctx context.Context, now time.Time, includeQuality bool, limit int) ([]uint64, error)
+	SaveRecoveryState(ctx context.Context, id uint64, state AccountRecoveryState) error
+	// ReactivateAccount sets auth_status=active and clears error/recovery state; enable also clears an auto disable.
+	ReactivateAccount(ctx context.Context, id uint64, enable bool) error
 }
 
 type AccountUpsertResult struct {

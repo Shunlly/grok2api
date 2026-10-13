@@ -57,11 +57,21 @@ type accountModel struct {
 	EgressNodeID         *uint64 `gorm:"index:idx_accounts_egress_node"`
 	EgressAssignmentMode string  `gorm:"size:16;not null;default:'';check:chk_accounts_egress_assignment_mode,egress_assignment_mode IN ('','manual','auto')"`
 	EgressAssignedAt     *time.Time
-	CreatedAt            time.Time               `gorm:"not null"`
-	UpdatedAt            time.Time               `gorm:"not null"`
-	Credential           *accountCredentialModel `gorm:"foreignKey:AccountID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
-	WebProfile           *webAccountProfileModel `gorm:"foreignKey:AccountID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
-	EgressNode           *egressNodeModel        `gorm:"foreignKey:EgressNodeID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:SET NULL"`
+	// DisabledSource records who disabled the account: admin, auto_quality or auto_auth.
+	// Empty with enabled=false is legacy data and is treated as admin.
+	DisabledSource string `gorm:"size:32;not null;default:''"`
+	DisabledReason string `gorm:"size:512;not null;default:''"`
+	// ReauthKind classifies a reauthRequired state as transient (auto-recheck) or permanent.
+	ReauthKind          string `gorm:"size:16;not null;default:''"`
+	RecoveryAttempts    int    `gorm:"not null;default:0"`
+	RecoveryNextCheckAt *time.Time
+	RecoveryLastCheckAt *time.Time
+	RecoveryLastError   string                  `gorm:"size:512;not null;default:''"`
+	CreatedAt           time.Time               `gorm:"not null"`
+	UpdatedAt           time.Time               `gorm:"not null"`
+	Credential          *accountCredentialModel `gorm:"foreignKey:AccountID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+	WebProfile          *webAccountProfileModel `gorm:"foreignKey:AccountID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+	EgressNode          *egressNodeModel        `gorm:"foreignKey:EgressNodeID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:SET NULL"`
 }
 
 func (accountModel) TableName() string { return "provider_accounts" }
