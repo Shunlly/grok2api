@@ -194,6 +194,7 @@ func newCodexModelCatalog(items []modelListItem) codexModelCatalog {
 			ContextWindow:                     capability.contextWindow,
 			MaxContextWindow:                  capability.contextWindow,
 			EffectiveContextWindowPercent:     95,
+			AutoCompactTokenLimit:             codexAutoCompactTokenLimit(capability.contextWindow),
 			ExperimentalSupportedTools:        []string{},
 			InputModalities:                   modalities,
 			SupportsSearchTool:                false,
@@ -229,4 +230,28 @@ func codexDisplayName(slug string) string {
 		}
 	}
 	return strings.Join(words, " ")
+}
+
+// Codex auto-compaction budget. Without auto_compact_token_limit Codex lets a
+// session grow to ~90% of the advertised window. Production audits showed
+// Codex sessions on grok-4.7 reaching ~330k+ tokens / ~3 MB request bodies,
+// where cli-chat-proxy.grok.com answers with a Cloudflare "Host Error" 502
+// after 100-225s; Codex then resends the same oversized request. The official
+// grok CLI compacts at 85% of the window (auto_compact_threshold_percent) and
+// its sessions never reach that size. Mirror that 85% and additionally cap the
+// budget at the largest size that reliably succeeded upstream.
+const (
+	codexAutoCompactPercent  = 85
+	codexAutoCompactMaxLimit = 300000
+)
+
+func codexAutoCompactTokenLimit(contextWindow int) *int {
+	if contextWindow <= 0 {
+		return nil
+	}
+	limit := contextWindow * codexAutoCompactPercent / 100
+	if limit > codexAutoCompactMaxLimit {
+		limit = codexAutoCompactMaxLimit
+	}
+	return &limit
 }

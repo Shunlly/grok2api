@@ -13,7 +13,7 @@
 <p align="center">
   <a href="./backend/go.mod"><img alt="Go" src="https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white" /></a>
   <a href="./frontend/package.json"><img alt="React" src="https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=111827" /></a>
-  <a href="https://github.com/chenyme/grok2api/pkgs/container/grok2api"><img alt="Docker" src="https://img.shields.io/badge/Docker-amd64%20%7C%20arm64-2496ED?logo=docker&logoColor=white" /></a>
+  <a href="https://github.com/Shunlly/grok2api/pkgs/container/grok2api"><img alt="Docker" src="https://img.shields.io/badge/Docker-amd64%20%7C%20arm64-2496ED?logo=docker&logoColor=white" /></a>
 </p>
 
 <p align="center">
@@ -173,7 +173,7 @@ Each Provider keeps its own credentials, quota, health, cooldown, concurrency, a
 Official images support `linux/amd64` and `linux/arm64`.
 
 ```bash
-git clone https://github.com/chenyme/grok2api.git
+git clone https://github.com/Shunlly/grok2api.git
 cd grok2api
 cp config.example.yaml config.yaml
 ```
