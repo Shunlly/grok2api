@@ -1332,6 +1332,12 @@ attemptLoop:
 				} else {
 					s.logger.Warn("upstream_response_health_retry", "request_id", input.RequestID, "account_id", credential.ID, "status", status, "minimum_cooldown", retryAfter)
 				}
+			} else if neterrorpkg.IsHTTP2ProtocolError(err) {
+				// Transport reset, not an account fault: brief soft cooldown only.
+				if markErr := s.selector.markSoftFailure(ctx, credential, http.StatusBadGateway, 0); markErr != nil {
+					s.logger.Warn("upstream_soft_cooldown_failed", "request_id", input.RequestID, "account_id", credential.ID, "error", markErr)
+				}
+				s.logger.Warn("upstream_http2_protocol_error", "request_id", input.RequestID, "account_id", credential.ID, "provider", credential.Provider)
 			} else {
 				s.selector.MarkFailure(ctx, credential, 0, 0)
 			}
@@ -2090,7 +2096,11 @@ func shouldStopForNonAccountFingerprint(fingerprints map[string]int, failure *Up
 	}
 	fingerprints[failure.Fingerprint]++
 	limit := nonAccountFailureFingerprintLimit
-	if failure.Code == "upstream_stream_idle_timeout" || failure.Fingerprint == "upstream_stream_idle_timeout" || failure.Code == "upstream_stream_empty" || failure.Fingerprint == "upstream_stream_empty" {
+	if failure.Code == "upstream_stream_idle_timeout" || failure.Fingerprint == "upstream_stream_idle_timeout" || failure.Code == "upstream_stream_empty" || failure.Fingerprint == "upstream_stream_empty" ||
+		failure.Code == "upstream_cloudflare_error" || failure.Code == "upstream_http2_protocol_error" {
+		// Cloudflare HTML 5xx and HTTP/2 PROTOCOL_ERROR are upstream/egress
+		// faults: rotating through the whole pool only cools healthy accounts
+		// and ends in 429s. Fail fast after a second identical hit.
 		limit = streamIdleFailureFingerprintLimit
 	}
 	return fingerprints[failure.Fingerprint] >= limit

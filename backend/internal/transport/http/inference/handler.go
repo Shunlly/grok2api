@@ -1146,6 +1146,12 @@ func (h *Handler) handleCreate(c *gin.Context, compact bool) {
 		}
 		request.Stream = false
 	}
+	if !compact {
+		if message, over := responsesContextOverflow(request.Model, body); over {
+			writeOpenAIError(c, http.StatusBadRequest, "context_length_exceeded", message)
+			return
+		}
+	}
 	clientValue, exists := c.Get(middleware.ClientKey)
 	clientKey, ok := clientValue.(clientkeydomain.Key)
 	if !exists || !ok {
