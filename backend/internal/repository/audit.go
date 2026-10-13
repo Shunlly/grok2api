@@ -32,6 +32,7 @@ type DegradeSummaryQuery struct {
 	AccountStatus   string
 	AccountClass    string
 	MinHits         int
+	DegradedOnly    bool
 	AccountOffset   int
 	AccountLimit    int
 	Buckets         []DegradeBucketRange

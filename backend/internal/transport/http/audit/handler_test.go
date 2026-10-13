@@ -199,8 +199,16 @@ func TestDegradeAccountsListsHardHitsAndRejectsUnknownWindow(t *testing.T) {
 	router := gin.New()
 	NewHandler(auditapp.NewService(repo, slog.Default(), 8, 4, time.Second)).Register(router.Group("/api/admin/v1"))
 
+	// Default view: speed classes are observe-only and must not list the account as degraded.
+	def := httptest.NewRecorder()
+	router.ServeHTTP(def, httptest.NewRequest(http.MethodGet, "/api/admin/v1/request-audits/degrade-accounts?window=24h&softTPS=500&hardTPS=1000&failClosed=false&page=1&pageSize=20", nil))
+	if def.Code != http.StatusOK || strings.Contains(def.Body.String(), `"id":"11"`) || !strings.Contains(def.Body.String(), `"stillEnabled":0`) ||
+		!strings.Contains(def.Body.String(), `"accounts":0`) || !strings.Contains(def.Body.String(), `"total":0`) {
+		t.Fatalf("observe-only speed hit leaked into degraded list: status=%d body=%s", def.Code, def.Body.String())
+	}
+
 	ok := httptest.NewRecorder()
-	router.ServeHTTP(ok, httptest.NewRequest(http.MethodGet, "/api/admin/v1/request-audits/degrade-accounts?window=24h&softTPS=500&hardTPS=1000&failClosed=false&page=1&pageSize=20", nil))
+	router.ServeHTTP(ok, httptest.NewRequest(http.MethodGet, "/api/admin/v1/request-audits/degrade-accounts?window=24h&softTPS=500&hardTPS=1000&failClosed=false&class=hard_tps&page=1&pageSize=20", nil))
 	if ok.Code != http.StatusOK || !strings.Contains(ok.Body.String(), `"id":"11"`) || !strings.Contains(ok.Body.String(), `"hard":1`) ||
 		!strings.Contains(ok.Body.String(), `"found":false`) || !strings.Contains(ok.Body.String(), `"deleted":1`) ||
 		!strings.Contains(ok.Body.String(), `"accountPage":{"page":1,"pageSize":20,"total":1,"hasMore":false}`) {

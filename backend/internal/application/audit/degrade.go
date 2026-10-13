@@ -30,12 +30,15 @@ type DegradeThresholds struct {
 }
 
 type DegradeAccountFilter struct {
-	Search   string
-	Status   string
-	Class    string
-	MinHits  int
-	Page     int
-	PageSize int
+	Search  string
+	Status  string
+	Class   string
+	MinHits int
+	// DegradedOnly hides observe-only speed classes from account lists and
+	// account totals: only real missing_thinking hits mark an account degraded.
+	DegradedOnly bool
+	Page         int
+	PageSize     int
 }
 
 type DegradeSummary struct {
@@ -131,7 +134,7 @@ func (s *Service) DegradeSummary(ctx context.Context, window string, thresholds 
 	data, err := s.audits.SummarizeDegrade(ctx, repository.DegradeSummaryQuery{
 		Start: start, End: end, SoftTPS: thresholds.SoftTPS, HardTPS: thresholds.HardTPS,
 		MinGenerationMS: thresholds.MinGenMS, MinOutputTokens: thresholds.MinOut, FailClosed: thresholds.FailClosed,
-		AccountSearch: filter.Search, AccountStatus: filter.Status, AccountClass: filter.Class, MinHits: filter.MinHits,
+		AccountSearch: filter.Search, AccountStatus: filter.Status, AccountClass: filter.Class, MinHits: filter.MinHits, DegradedOnly: filter.DegradedOnly,
 		AccountOffset: (filter.Page - 1) * filter.PageSize, AccountLimit: filter.PageSize,
 		Buckets: bucketRanges, RecentLimit: degradeRecentEventCap,
 	})
@@ -260,14 +263,14 @@ func buildDegradeSummary(window string, now time.Time, thresholds DegradeThresho
 
 func degradeBucketSpecs(window string, start, end time.Time) []degradeBucketSpec {
 	step := 5 * time.Minute
-	label := func(value time.Time) string { return value.Format("15:04") }
+	label := func(value time.Time) string { return value.In(time.Local).Format("15:04") }
 	switch window {
 	case degradeWindow7d:
 		step = 2 * time.Hour
-		label = func(value time.Time) string { return value.Format("01-02 15:00") }
+		label = func(value time.Time) string { return value.In(time.Local).Format("01-02 15:00") }
 	case degradeWindow24h:
 		step = time.Hour
-		label = func(value time.Time) string { return value.Format("15:00") }
+		label = func(value time.Time) string { return value.In(time.Local).Format("15:00") }
 	case degradeWindow6h:
 		step = 20 * time.Minute
 	}

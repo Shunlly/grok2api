@@ -831,12 +831,16 @@ func (r *AuditRepository) SummarizeDegrade(ctx context.Context, input repository
 	err := r.db.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		classified := r.degradeClassifiedQuery(tx, input)
 		var totals degradeTotalsRow
+		onlyDegraded := "1 = 1"
+		if input.DegradedOnly {
+			onlyDegraded = "d.degrade_class = 'missing_thinking'"
+		}
 		if err := tx.Table("(?) AS d", classified).
 			Select(`COALESCE(SUM(CASE WHEN d.degrade_class = 'missing_thinking' THEN 1 ELSE 0 END), 0) AS hits,
-				COUNT(DISTINCT d.account_id) AS accounts,
-				COUNT(DISTINCT CASE WHEN p.id IS NOT NULL AND p.enabled = TRUE THEN d.account_id END) AS still_enabled,
-				COUNT(DISTINCT CASE WHEN p.id IS NOT NULL AND p.enabled = FALSE THEN d.account_id END) AS disabled,
-				COUNT(DISTINCT CASE WHEN p.id IS NULL THEN d.account_id END) AS deleted,
+				COUNT(DISTINCT CASE WHEN ` + onlyDegraded + ` THEN d.account_id END) AS accounts,
+				COUNT(DISTINCT CASE WHEN ` + onlyDegraded + ` AND p.id IS NOT NULL AND p.enabled = TRUE THEN d.account_id END) AS still_enabled,
+				COUNT(DISTINCT CASE WHEN ` + onlyDegraded + ` AND p.id IS NOT NULL AND p.enabled = FALSE THEN d.account_id END) AS disabled,
+				COUNT(DISTINCT CASE WHEN ` + onlyDegraded + ` AND p.id IS NULL THEN d.account_id END) AS deleted,
 				COALESCE(SUM(CASE WHEN d.degrade_class = 'hard_tps' THEN 1 ELSE 0 END), 0) AS hard,
 				COALESCE(SUM(CASE WHEN d.degrade_class = 'soft_tps' THEN 1 ELSE 0 END), 0) AS soft,
 				COALESCE(SUM(CASE WHEN d.degrade_class = 'buffered_burst' THEN 1 ELSE 0 END), 0) AS burst,
@@ -1023,6 +1027,9 @@ func (r *AuditRepository) degradeAccountAggregate(tx *gorm.DB, classified *gorm.
 		query = query.Where("p.id IS NOT NULL AND p.enabled = FALSE")
 	case "deleted":
 		query = query.Where("p.id IS NULL")
+	}
+	if input.DegradedOnly && input.MinHits <= 1 {
+		query = query.Having("SUM(CASE WHEN d.degrade_class = 'missing_thinking' THEN 1 ELSE 0 END) >= 1")
 	}
 	if input.MinHits > 1 {
 		query = query.Having("SUM(CASE WHEN d.degrade_class = 'missing_thinking' THEN 1 ELSE 0 END) >= ?", input.MinHits)

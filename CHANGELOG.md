@@ -2,6 +2,12 @@
 
 Shunlly/grok2api fork of [chenyme/grok2api](https://github.com/chenyme/grok2api).
 
+## v3.2.2 — 2026-10-13
+
+### Fixed
+- **降智面板误报**：「降智账号」列表与「仍启用」计数此前会把仅触发速度类分类（burst/soft/hard，PR #7 已降为仅观测）的账号列出来，导致健康账号常驻面板。现在默认只列出真实 `missing_thinking` 命中的账号；按速度类筛选时仍可查看观测数据。
+- 降智趋势图时间标签改为按服务器本地时区（容器 `TZ=Asia/Shanghai`）显示，不再显示 UTC。
+
 ## v3.2.1 — 2026-10-13
 
 ### Added
