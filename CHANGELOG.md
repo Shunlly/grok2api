@@ -2,6 +2,11 @@
 
 Shunlly/grok2api fork of [chenyme/grok2api](https://github.com/chenyme/grok2api).
 
+## v3.3.1 — 2026-10-14
+
+### Fixed
+- 「立即重检」接口返回的 `accountId` 改为字符串（与其他 ID 一致），修复面板解析重检结果失败的问题。
+
 ## v3.3.0 — 2026-10-14
 
 ### Added

@@ -45,7 +45,7 @@ const (
 
 // RecheckResult describes one recovery probe.
 type RecheckResult struct {
-	AccountID   uint64     `json:"accountId"`
+	AccountID   uint64     `json:"accountId,string"`
 	Outcome     string     `json:"outcome"`
 	Message     string     `json:"message"`
 	Attempts    int        `json:"attempts"`
