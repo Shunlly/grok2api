@@ -598,21 +598,6 @@ func (s *Service) applyMissingThinkingPenalty(ctx context.Context, requestID str
 	}
 }
 
-func (s *Service) applyOutputSpeedPenalty(ctx context.Context, record audit.Record, credential accountdomain.Credential, cfg QualityRetryRuntime, forcedEgress bool) error {
-	if !cfg.Enabled || !cfg.AutoDisable || forcedEgress || credential.Provider != accountdomain.ProviderBuild || !record.Streaming || record.FirstTokenMS == nil || record.OutputTokens < cfg.MinOutputTokens || !auditRequestSucceeded(record.StatusCode, record.ErrorCode) {
-		return nil
-	}
-	class, tps, _ := audit.ClassifyOutputSpeed(record.OutputTokens, record.ReasoningTokens, *record.FirstTokenMS, record.DurationMS, cfg.SoftTPS, cfg.HardTPS, cfg.MinGenerationMS, cfg.FailClosed)
-	if class == "" {
-		return nil
-	}
-	// Fast output is informational only: Grok Build frequently reasons silently
-	// and then flushes the visible answer, which looks like extreme Token/s.
-	// It is never used to disable accounts (see canary prober for 降智 detection).
-	s.logger.Info("quality_fast_output_observed", "request_id", record.RequestID, "account_id", credential.ID, "class", class, "output_tps", tps)
-	return nil
-}
-
 func (s *Service) recordQualityDegraded(ctx context.Context, base audit.Record, credential accountdomain.Credential, usage Usage, startedAt time.Time, trace *infraegress.Trace, provider accountdomain.Provider) {
 	record := base
 	record.EventID = newAuditEventID()

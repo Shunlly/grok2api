@@ -350,3 +350,22 @@ export function getCanarySummary(): Promise<CanarySummaryDTO> {
 export function runCanaryRound(): Promise<{ roundId: string }> {
   return apiRequest("/api/admin/v1/quality/canary/run", { method: "POST" }, createObjectDecoder("canary run", { roundId: isString }));
 }
+
+export type AccountQualityFlagDTO = {
+  accountId: string;
+  degradedHits: number;
+  lastDegradedAt?: string;
+  canaryFailures: number;
+  lastCanaryFailAt?: string;
+  lastCanaryStatus?: string;
+  lastCanaryReason?: string;
+};
+
+const decodeAccountQualityFlags = createObjectDecoder<{ flags: AccountQualityFlagDTO[] }>("account quality flags", {
+  flags: isArrayOf(hasShape({ accountId: isString, degradedHits: isNumber, canaryFailures: isNumber, lastDegradedAt: isOptional(isString), lastCanaryFailAt: isOptional(isString), lastCanaryStatus: isOptional(isString), lastCanaryReason: isOptional(isString) })),
+});
+
+/** Accounts with real quality hits (quality_degraded or failed canary) in the last 7 days. */
+export function getAccountQualityFlags(): Promise<{ flags: AccountQualityFlagDTO[] }> {
+  return apiRequest("/api/admin/v1/quality/account-flags", {}, decodeAccountQualityFlags);
+}

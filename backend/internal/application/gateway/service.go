@@ -1132,11 +1132,7 @@ func (s *Service) createResponseAt(ctx context.Context, input Input, path string
 				}
 				record.CreatedAt = now
 				applyAuditEgress(&record, egressTrace, route.Provider)
-				if err := budget.run("quality_disable", finalizationHealthBudget, func(stageCtx context.Context) error {
-					return s.applyOutputSpeedPenalty(stageCtx, record, credential, holdCfg, input.ForcedEgressNodeID != 0)
-				}); err != nil {
-					s.logger.Error("quality_degraded_penalty_failed", "request_id", input.RequestID, "account_id", credential.ID, "error", err)
-				}
+				// Speed-based (Token/s) degradation detection was removed in v3.2.3.
 				if supportsStoredResponses && operation == audit.OperationResponses && responseID != "" && successful {
 					err := budget.run("response_ownership", finalizationOwnershipBudget, func(stageCtx context.Context) error {
 						return s.responses.Save(stageCtx, inferencedomain.ResponseOwnership{ResponseID: responseID, AccountID: accountID, ClientKeyID: input.ClientKey.ID, ModelRouteID: route.ID, Provider: route.Provider, PromptCacheKey: ownershipPromptCacheKey, ReasoningReplayKey: reasoningReplayKey, ExpiresAt: now.Add(responseOwnershipTTL), CreatedAt: now, UpdatedAt: now})

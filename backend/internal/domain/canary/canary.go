@@ -225,3 +225,14 @@ func PoolPasses(round []Result, accountID uint64) bool {
 	}
 	return judged > 0 && passed*2 >= judged
 }
+
+// AccountFlag summarises real quality hits for one account (observe-only).
+type AccountFlag struct {
+	AccountID        uint64     `json:"accountId,string"`
+	DegradedHits     int64      `json:"degradedHits"`
+	LastDegradedAt   *time.Time `json:"lastDegradedAt,omitempty"`
+	CanaryFailures   int64      `json:"canaryFailures"`
+	LastCanaryFailAt *time.Time `json:"lastCanaryFailAt,omitempty"`
+	LastCanaryStatus string     `json:"lastCanaryStatus,omitempty"`
+	LastCanaryReason string     `json:"lastCanaryReason,omitempty"`
+}

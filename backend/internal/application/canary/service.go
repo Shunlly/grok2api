@@ -348,3 +348,16 @@ func (s *Service) Summary(ctx context.Context, historyLimit int) (Summary, error
 	}
 	return out, nil
 }
+
+type accountFlagStore interface {
+	AccountQualityFlags(context.Context, time.Time) ([]canary.AccountFlag, error)
+}
+
+// AccountFlags returns accounts with real quality hits in the last window.
+func (s *Service) AccountFlags(ctx context.Context, window time.Duration) ([]canary.AccountFlag, error) {
+	store, ok := s.store.(accountFlagStore)
+	if !ok {
+		return []canary.AccountFlag{}, nil
+	}
+	return store.AccountQualityFlags(ctx, time.Now().UTC().Add(-window))
+}

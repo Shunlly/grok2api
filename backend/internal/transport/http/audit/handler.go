@@ -29,7 +29,6 @@ func NewQualityGuardHandler(service *auditapp.Service, clientKeyID uint64) *Hand
 func (h *Handler) Register(router *gin.RouterGroup) {
 	router.GET("/request-audits", h.list)
 	router.GET("/request-audits/summary", h.summary)
-	router.GET("/request-audits/degrade-accounts", h.degradeAccounts)
 	router.GET("/request-audits/:id", h.get)
 }
 
