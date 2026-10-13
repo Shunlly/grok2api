@@ -832,7 +832,7 @@ func (r *AuditRepository) SummarizeDegrade(ctx context.Context, input repository
 		classified := r.degradeClassifiedQuery(tx, input)
 		var totals degradeTotalsRow
 		if err := tx.Table("(?) AS d", classified).
-			Select(`COUNT(*) AS hits,
+			Select(`COALESCE(SUM(CASE WHEN d.degrade_class = 'missing_thinking' THEN 1 ELSE 0 END), 0) AS hits,
 				COUNT(DISTINCT d.account_id) AS accounts,
 				COUNT(DISTINCT CASE WHEN p.id IS NOT NULL AND p.enabled = TRUE THEN d.account_id END) AS still_enabled,
 				COUNT(DISTINCT CASE WHEN p.id IS NOT NULL AND p.enabled = FALSE THEN d.account_id END) AS disabled,
@@ -862,7 +862,7 @@ func (r *AuditRepository) SummarizeDegrade(ctx context.Context, input repository
 		}
 		result.AccountOffset = accountOffset
 		var accountRows []degradeAccountRow
-		if err := accountQuery.Order("hits DESC, max_tps DESC, id ASC").
+		if err := accountQuery.Order("hits DESC, COUNT(*) DESC, max_tps DESC, id ASC").
 			Offset(accountOffset).Limit(input.AccountLimit).Scan(&accountRows).Error; err != nil {
 			return err
 		}
@@ -910,7 +910,7 @@ func (r *AuditRepository) SummarizeDegrade(ctx context.Context, input repository
 
 		var nodeRows []degradeNodeRow
 		if err := tx.Table("(?) AS d", classified).
-			Select("COALESCE(NULLIF(d.egress_node_name, ''), '?') AS name, COUNT(*) AS hits, COUNT(DISTINCT d.account_id) AS accounts, COALESCE(MAX(d.tps), 0) AS max_tps").
+			Select("COALESCE(NULLIF(d.egress_node_name, ''), '?') AS name, COALESCE(SUM(CASE WHEN d.degrade_class = 'missing_thinking' THEN 1 ELSE 0 END), 0) AS hits, COUNT(DISTINCT d.account_id) AS accounts, COALESCE(MAX(d.tps), 0) AS max_tps").
 			Group("COALESCE(NULLIF(d.egress_node_name, ''), '?')").Order("hits DESC, name ASC").Scan(&nodeRows).Error; err != nil {
 			return err
 		}
@@ -924,7 +924,7 @@ func (r *AuditRepository) SummarizeDegrade(ctx context.Context, input repository
 			bucketed := tx.Table("(?) AS d", classified).Select(caseSQL+" AS bucket_index, d.degrade_class", caseArgs...)
 			var bucketRows []degradeBucketRow
 			if err := tx.Table("(?) AS b", bucketed).
-				Select("b.bucket_index, COUNT(*) AS count, COALESCE(SUM(CASE WHEN b.degrade_class IN ('hard_tps', 'buffered_burst', 'missing_thinking') THEN 1 ELSE 0 END), 0) AS severe").
+				Select("b.bucket_index, COUNT(*) AS count, COALESCE(SUM(CASE WHEN b.degrade_class = 'missing_thinking' THEN 1 ELSE 0 END), 0) AS severe").
 				Where("b.bucket_index >= 0").Group("b.bucket_index").Order("b.bucket_index ASC").Scan(&bucketRows).Error; err != nil {
 				return err
 			}
@@ -961,11 +961,14 @@ func (r *AuditRepository) degradeClassifiedQuery(tx *gorm.DB, input repository.D
 	generationExpression := fmt.Sprintf("(CASE WHEN a.reasoning_tokens > 0 AND a.duration_ms - a.first_token_ms < a.first_token_ms AND a.duration_ms - a.first_token_ms < %d THEN a.duration_ms ELSE a.duration_ms - a.first_token_ms END)", audit.DefaultDegradeMinGenMS)
 	// NULLIF keeps PostgreSQL safe even if its planner evaluates the throughput
 	// expression before the duration guard in the WHERE clause.
-	tpsExpression := fmt.Sprintf("(CAST(a.output_tokens AS %s) * 1000.0 / NULLIF(%s, 0))", castType, generationExpression)
+	// Speed is informational only and measured over VISIBLE output: Grok Build
+	// often reasons silently and then flushes the answer, so counting hidden
+	// reasoning tokens inflated Token/s into false "degraded" hits.
+	tpsExpression := fmt.Sprintf("(CAST(a.output_tokens - COALESCE(a.reasoning_tokens, 0) AS %s) * 1000.0 / NULLIF(%s, 0))", castType, generationExpression)
 	selectTPS := fmt.Sprintf("CASE WHEN a.error_code = ? THEN 0 ELSE %s END", tpsExpression)
 	classExpression := fmt.Sprintf("CASE WHEN a.error_code = ? THEN ? WHEN ? AND %s < ? THEN ? WHEN %s >= ? THEN ? ELSE ? END", generationExpression, tpsExpression)
 	speedPredicate := fmt.Sprintf(
-		"a.streaming = ? AND %s AND a.output_tokens >= ? AND a.first_token_ms IS NOT NULL AND a.duration_ms > a.first_token_ms AND %s >= ?",
+		"a.streaming = ? AND %s AND a.output_tokens - COALESCE(a.reasoning_tokens, 0) >= ? AND a.first_token_ms IS NOT NULL AND a.duration_ms > a.first_token_ms AND %s >= ?",
 		auditSuccessPredicate, tpsExpression,
 	)
 	thinkingPredicate := "a.streaming = ? AND a.error_code = ? AND a.status_code >= 200 AND a.status_code < 300"
@@ -992,7 +995,7 @@ func (r *AuditRepository) degradeAccountAggregate(tx *gorm.DB, classified *gorm.
 		Select(`d.account_id AS id,
 			COALESCE(NULLIF(p.name, ''), MAX(d.account_name), '') AS name,
 			COALESCE(p.email, '') AS email,
-			COUNT(*) AS hits,
+			COALESCE(SUM(CASE WHEN d.degrade_class = 'missing_thinking' THEN 1 ELSE 0 END), 0) AS hits,
 			COALESCE(MAX(d.tps), 0) AS max_tps,
 			COALESCE(SUM(CASE WHEN d.degrade_class = 'buffered_burst' THEN 1 ELSE 0 END), 0) AS burst,
 			COALESCE(SUM(CASE WHEN d.degrade_class = 'soft_tps' THEN 1 ELSE 0 END), 0) AS soft,
@@ -1022,7 +1025,7 @@ func (r *AuditRepository) degradeAccountAggregate(tx *gorm.DB, classified *gorm.
 		query = query.Where("p.id IS NULL")
 	}
 	if input.MinHits > 1 {
-		query = query.Having("COUNT(*) >= ?", input.MinHits)
+		query = query.Having("SUM(CASE WHEN d.degrade_class = 'missing_thinking' THEN 1 ELSE 0 END) >= ?", input.MinHits)
 	}
 	if input.AccountClass != "" {
 		query = query.Having("SUM(CASE WHEN d.degrade_class = ? THEN 1 ELSE 0 END) > 0", input.AccountClass)

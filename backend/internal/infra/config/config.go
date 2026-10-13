@@ -68,6 +68,7 @@ type Config struct {
 	Routing           RoutingConfig           `yaml:"routing"`
 	Audit             AuditConfig             `yaml:"audit"`
 	QualityGuard      QualityGuardConfig      `yaml:"qualityGuard"`
+	Canary            CanaryConfig            `yaml:"canary"`
 	ClientKeyDefaults ClientKeyDefaultsConfig `yaml:"clientKeyDefaults"`
 	Accounts          AccountsConfig          `yaml:"-"`
 }
@@ -254,6 +255,20 @@ type AuditConfig struct {
 	LedgerFailureThreshold      int      `yaml:"ledgerFailureThreshold"`
 	LedgerUnhealthyGrace        Duration `yaml:"ledgerUnhealthyGrace"`
 	LedgerQueueHighWatermarkPct int      `yaml:"ledgerQueueHighWatermarkPercent"`
+}
+
+// CanaryConfig defines the observe-only per-account canary prober. It sends a
+// rotating fixed prompt to each enabled Build account and only records scores;
+// it never changes routing, cooldown or account enablement.
+type CanaryConfig struct {
+	Enabled         bool     `yaml:"enabled"`
+	Interval        Duration `yaml:"interval"`
+	InitialDelay    Duration `yaml:"initialDelay"`
+	Model           string   `yaml:"model"`
+	ReasoningEffort string   `yaml:"reasoningEffort"`
+	MaxOutputTokens int      `yaml:"maxOutputTokens"`
+	ProbeTimeout    Duration `yaml:"probeTimeout"`
+	RetentionDays   int      `yaml:"retentionDays"`
 }
 
 // QualityGuardConfig defines the optional egress-quality sidecar policy.
@@ -714,6 +729,12 @@ func (c Config) Validate() error {
 	if err := validateQualityGuardConfig(c.QualityGuard); err != nil {
 		return err
 	}
+	if c.Canary.Enabled && c.Canary.Interval.Value() < 10*time.Minute {
+		return errors.New("canary.interval 不能小于 10m")
+	}
+	if c.Canary.MaxOutputTokens < 0 || c.Canary.MaxOutputTokens > 32000 {
+		return errors.New("canary.maxOutputTokens 必须在 0 到 32000 之间")
+	}
 	if c.ClientKeyDefaults.RPMLimit < 1 || c.ClientKeyDefaults.RPMLimit > clientkeydomain.MaxRPMLimit || c.ClientKeyDefaults.MaxConcurrent < 1 || c.ClientKeyDefaults.MaxConcurrent > clientkeydomain.MaxConcurrent {
 		return errors.New("clientKeyDefaults 超出允许范围")
 	}
@@ -946,6 +967,11 @@ func defaultConfig() Config {
 			RetentionDays: 7,
 			LedgerMode:    "enforce", LedgerFailureThreshold: 1,
 			LedgerUnhealthyGrace: Duration(10 * time.Second), LedgerQueueHighWatermarkPct: 90,
+		},
+		Canary: CanaryConfig{
+			Enabled: false, Interval: Duration(2 * time.Hour), InitialDelay: Duration(10 * time.Minute),
+			Model: "grok-4.7", ReasoningEffort: "high", MaxOutputTokens: 6000,
+			ProbeTimeout: Duration(5 * time.Minute), RetentionDays: 30,
 		},
 		QualityGuard: QualityGuardConfig{
 			Model: "grok-4.6", Mode: "hybrid",

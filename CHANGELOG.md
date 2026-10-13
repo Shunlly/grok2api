@@ -2,6 +2,15 @@
 
 Shunlly/grok2api fork of [chenyme/grok2api](https://github.com/chenyme/grok2api).
 
+## v3.2.0 — 2026-10-13
+
+### Changed
+- **降智判定降级**：soft/hard/burst 吞吐分类改为信息性「快速输出」，不再计入降智次数/时序 severe、不再触发自动停用；只有缺失思考计入降智。吞吐改为只按可见输出（output − reasoning tokens）计算，修正上游先静默推理、再一次性刷出答案造成的误报。面板文案同步更新。
+- Build `ResponseHeaderTimeout` 代码默认值 5m → 20m（与生产一致）。
+
+### Added
+- **账号金丝雀探测（仅观察）**：定时（默认 2h，`canary.*` 可配，默认关闭）向每个启用的 Build 账号固定发送轮换题目（确定答案的推理题 / SVG 结构题），stream + reasoning high + 输出上限；按号池思考 token 中位数、正确性/有效性、可见长度打分；连续 3 次失败且号池其余账号通过才标记可疑；传输错误与隐藏思考模型不计。新表 `canary_probe_results`、管理 API `GET /api/admin/v1/quality/canary`、`POST /api/admin/v1/quality/canary/run`，质量守护新增「金丝雀探测」标签页。结果不影响路由/冷却/停用。
+
 ## v3.1.9 — 2026-10-13
 
 ### Fixed

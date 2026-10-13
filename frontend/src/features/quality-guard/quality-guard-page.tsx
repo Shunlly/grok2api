@@ -18,6 +18,7 @@ import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { CanaryPanel } from "@/features/quality-guard/canary-panel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DegradeAccountsPanel } from "@/features/quality-guard/degrade-accounts-panel";
 import { ProbeProfilesPanel } from "@/features/quality-guard/probe-profiles-panel";
@@ -32,7 +33,7 @@ import { cn } from "@/shared/lib/cn";
 
 const NODE_ACTION_TOAST_ID = "quality-guard-node-action";
 const QUALITY_GUARD_PAGE_SIZES = [20, 50, 100] as const;
-type QualityGuardTab = "nodes" | "profiles" | "accounts";
+type QualityGuardTab = "nodes" | "profiles" | "accounts" | "canary";
 
 export function QualityGuardPage() {
   const { t, i18n } = useTranslation();
@@ -233,7 +234,11 @@ export function QualityGuardPage() {
           <TabsTrigger value="nodes">{t("qualityGuard.nodesTab")}</TabsTrigger>
           <TabsTrigger value="profiles">{t("qualityGuard.profilesTab")}</TabsTrigger>
           <TabsTrigger value="accounts">{t("qualityGuard.degrade.tab")}</TabsTrigger>
+          <TabsTrigger value="canary">{t("qualityGuard.canary.tab")}</TabsTrigger>
         </TabsList>
+        <TabsContent value="canary" className="mt-6">
+          <CanaryPanel />
+        </TabsContent>
         <TabsContent value="profiles" className="mt-6">
           <ProbeProfilesPanel />
         </TabsContent>

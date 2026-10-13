@@ -3,7 +3,7 @@ package settings
 import "time"
 
 const (
-	DefaultBuildResponseHeaderTimeout = 5 * time.Minute
+	DefaultBuildResponseHeaderTimeout = 20 * time.Minute
 	MinBuildResponseHeaderTimeout     = 30 * time.Second
 	MaxBuildResponseHeaderTimeout     = 30 * time.Minute
 

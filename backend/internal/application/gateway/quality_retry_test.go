@@ -221,7 +221,7 @@ func TestEncryptedThinkingFloorSaturates(t *testing.T) {
 	}
 }
 
-func TestAutoDisableFirstOutputSpeedHit(t *testing.T) {
+func TestFastOutputSpeedNeverDisables(t *testing.T) {
 	ctx := context.Background()
 	database, err := relational.OpenSQLite(ctx, filepath.Join(t.TempDir(), "output-speed-disable.db"))
 	if err != nil {
@@ -259,8 +259,8 @@ func TestAutoDisableFirstOutputSpeedHit(t *testing.T) {
 		t.Fatal(err)
 	}
 	disabled, err := accounts.Get(ctx, credential.ID)
-	if err != nil || disabled.Enabled {
-		t.Fatalf("first degraded-speed hit must disable: %#v, err=%v", disabled, err)
+	if err != nil || !disabled.Enabled {
+		t.Fatalf("fast output is informational and must not disable: %#v, err=%v", disabled, err)
 	}
 }
 

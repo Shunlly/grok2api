@@ -42,10 +42,10 @@ func TestDegradeSummaryClassifiesStreamingAnomalies(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if summary.Totals.Hits != 1 || summary.Totals.Accounts != 1 || summary.Totals.Hard != 1 {
+	if summary.Totals.Hits != 0 || summary.Totals.Accounts != 1 || summary.Totals.Hard != 1 {
 		t.Fatalf("totals = %#v", summary.Totals)
 	}
-	if len(summary.Accounts) != 1 || summary.Accounts[0].ID != 7 || summary.Accounts[0].Hits != 1 {
+	if len(summary.Accounts) != 1 || summary.Accounts[0].ID != 7 || summary.Accounts[0].Hits != 0 {
 		t.Fatalf("accounts = %#v", summary.Accounts)
 	}
 	if summary.Totals.Deleted != 1 || summary.Totals.Disabled != 0 || summary.Accounts[0].Found {
@@ -89,7 +89,7 @@ func TestDegradeSummaryDoesNotDropOlderAnomalyAfterTwentyThousandNewerRows(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
-	if summary.Totals.Hits != 1 || summary.Totals.Hard != 1 || len(summary.Events) != 1 || summary.Events[0].RequestID != "older-real-anomaly" {
+	if summary.Totals.Hits != 0 || summary.Totals.Hard != 1 || len(summary.Events) != 1 || summary.Events[0].RequestID != "older-real-anomaly" {
 		t.Fatalf("summary silently dropped older anomaly: totals=%#v events=%#v", summary.Totals, summary.Events)
 	}
 }
@@ -157,7 +157,7 @@ func TestDegradeSummaryUsesReasoningEvidenceForLateFlushFallback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if summary.Totals.Hits != 1 || summary.Totals.Burst != 1 || len(summary.Events) != 1 || summary.Events[0].RequestID != "visible-output-burst" {
+	if summary.Totals.Hits != 0 || summary.Totals.Burst != 1 || len(summary.Events) != 1 || summary.Events[0].RequestID != "visible-output-burst" {
 		t.Fatalf("reasoning-aware summary = totals %#v events %#v", summary.Totals, summary.Events)
 	}
 }
@@ -314,7 +314,7 @@ func TestDegradeSummaryIncludesQualityDegradedThinkingRetries(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if summary.Totals.Hits != 3 || summary.Totals.Accounts != 2 || summary.Totals.Hard != 1 || summary.Totals.Thinking != 2 {
+	if summary.Totals.Hits != 2 || summary.Totals.Accounts != 2 || summary.Totals.Hard != 1 || summary.Totals.Thinking != 2 {
 		t.Fatalf("totals = %#v", summary.Totals)
 	}
 	if len(summary.Accounts) != 2 {

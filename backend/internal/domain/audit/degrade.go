@@ -64,8 +64,9 @@ func GenerationWindowMS(firstTokenMS, durationMS, reasoningTokens int64) int64 {
 
 func OutputTokensPerSecond(outputTokens, reasoningTokens, firstTokenMS, durationMS int64) float64 {
 	generationMS := GenerationWindowMS(firstTokenMS, durationMS, reasoningTokens)
-	if outputTokens <= 0 || generationMS <= 0 {
+	visible := outputTokens - max(reasoningTokens, 0)
+	if visible <= 0 || generationMS <= 0 {
 		return 0
 	}
-	return float64(outputTokens) * 1000 / float64(generationMS)
+	return float64(visible) * 1000 / float64(generationMS)
 }
