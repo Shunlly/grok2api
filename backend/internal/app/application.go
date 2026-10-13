@@ -30,6 +30,7 @@ import (
 	updatecheckapp "github.com/chenyme/grok2api/backend/internal/application/updatecheck"
 	"github.com/chenyme/grok2api/backend/internal/buildinfo"
 	"github.com/chenyme/grok2api/backend/internal/domain/account"
+	canarydomain "github.com/chenyme/grok2api/backend/internal/domain/canary"
 	"github.com/chenyme/grok2api/backend/internal/infra/config"
 	infraegress "github.com/chenyme/grok2api/backend/internal/infra/egress"
 	inframedia "github.com/chenyme/grok2api/backend/internal/infra/media"
@@ -439,6 +440,24 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*Applicat
 		Model: cfg.Canary.Model, ReasoningEffort: cfg.Canary.ReasoningEffort, MaxOutputTokens: cfg.Canary.MaxOutputTokens,
 		ProbeTimeout: cfg.Canary.ProbeTimeout.Value(), Retention: time.Duration(cfg.Canary.RetentionDays) * 24 * time.Hour,
 	}, qualityGuardIdentity.ID, gatewayService, accountRepo, relational.NewCanaryRepository(database), logger)
+	accountService.SetAutoReactivateConfig(accountapp.AutoReactivateConfig{
+		Enabled: cfg.AutoReactivate.Enabled, Interval: cfg.AutoReactivate.Interval.Value(),
+		MaxAge: cfg.AutoReactivate.MaxAge.Value(), IncludeQualityDisabled: cfg.AutoReactivate.IncludeQualityDisabled,
+	})
+	accountService.SetQualityRecheck(func(ctx context.Context, accountID uint64) (bool, string, error) {
+		credential, err := accountRepo.Get(ctx, accountID)
+		if err != nil {
+			return false, "", err
+		}
+		if credential.Provider != account.ProviderBuild {
+			return false, "仅支持 Grok Build 账号的质量重检", nil
+		}
+		result, err := canaryService.ProbeAccount(gateway.WithRecoveryProbe(ctx), accountID, credential.Name)
+		if err != nil {
+			return false, result.Error, err
+		}
+		return result.Status == canarydomain.StatusPass, result.Reasons, nil
+	})
 	router := httpserver.New(httpserver.Dependencies{Canary: canaryService, Logger: logger, RequestTimeout: cfg.Server.RequestTimeout.Value(), MaxBodyBytes: cfg.Server.MaxBodyBytes, TrustedProxies: cfg.Server.TrustedProxies, ConcurrencyGate: inferenceConcurrency, SecureCookies: cfg.Auth.SecureCookies, SwaggerEnabled: cfg.Server.SwaggerEnabled, PublicAPIBaseURL: cfg.Frontend.EffectivePublicAPIBaseURL(), FrontendStaticPath: cfg.Frontend.StaticPath, Readiness: readiness, TrafficReady: startup.acceptsTraffic, AdminAuth: adminService, Accounts: accountService, AccountSync: accountSyncService, Models: modelService, ClientKeys: clientKeyService, Audits: auditService, Dashboard: dashboardService, Gateway: gatewayService, Media: mediaService, Settings: settingsService, Egress: egressService, QualityGuardStatePath: qualityGuardPath("state.json"), QualityGuardConfigPath: qualityGuardPath("runtime-config.json"), QualityGuardToken: qualityGuardToken, QualityGuardProbe: qualityGuardProbe, Updates: updateService})
 	server := &http.Server{Addr: cfg.Server.Listen, Handler: router, ReadHeaderTimeout: 10 * time.Second, ReadTimeout: cfg.Server.ReadTimeout.Value(), IdleTimeout: 2 * time.Minute, MaxHeaderBytes: 64 << 10}
 	return &Application{
@@ -630,6 +649,10 @@ func (a *Application) Run(ctx context.Context) error {
 	})
 	startBackground("credential_refresh", func(taskCtx context.Context) error {
 		a.accounts.RunCredentialRefresh(taskCtx)
+		return nil
+	})
+	startBackground("account_recovery", func(taskCtx context.Context) error {
+		a.accounts.RunAccountRecovery(taskCtx)
 		return nil
 	})
 	startBackground("account_auto_clean", func(taskCtx context.Context) error {

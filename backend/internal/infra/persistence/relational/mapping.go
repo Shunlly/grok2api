@@ -84,6 +84,9 @@ func toAccountDomain(value accountModel) account.Credential {
 		ExpiresAt: expiresAt, RefreshDueAt: refreshDueAt, LastRefreshAt: lastRefreshAt,
 		RefreshFailureCount: refreshFailures, RefreshUnclassifiedAuthCount: refreshUnclassifiedAuthFailures, LastRefreshErrorStatus: lastRefreshErrorStatus, LastRefreshErrorCode: lastRefreshError, LastRefreshErrorMessage: lastRefreshErrorMessage, LastRefreshErrorResponse: lastRefreshErrorResponse, RefreshPermanent: refreshPermanent,
 		Enabled: value.Enabled, AuthStatus: account.AuthStatus(value.AuthStatus), ReauthMarkedAt: value.ReauthMarkedAt, Priority: value.Priority,
+		DisabledSource: account.DisabledSource(value.DisabledSource), DisabledReason: value.DisabledReason,
+		ReauthKind: account.ReauthKind(value.ReauthKind), RecoveryAttempts: value.RecoveryAttempts, RecoveryNextCheckAt: value.RecoveryNextCheckAt,
+		RecoveryLastCheckAt: value.RecoveryLastCheckAt, RecoveryLastError: value.RecoveryLastError,
 		MaxConcurrent: value.MaxConcurrent, MinimumRemaining: value.MinimumRemaining, FailureCount: value.FailureCount,
 		CooldownUntil: value.CooldownUntil, LastError: value.LastError, LastUsedAt: value.LastUsedAt,
 		ObservedModel: value.ObservedModel, ObservedModelAt: value.ObservedModelAt, WebTier: webTier, WebTierSyncedAt: webTierSyncedAt,
@@ -123,6 +126,9 @@ func fromAccountDomain(value account.Credential) accountModel {
 		ID: value.ID, IdentityKey: accountIdentity(value), Provider: string(value.Provider), Name: value.Name, Email: value.Email,
 		UserID: value.UserID, TeamID: value.TeamID, SourceKey: value.SourceKey,
 		Enabled: value.Enabled, AuthStatus: string(value.AuthStatus), ReauthMarkedAt: value.ReauthMarkedAt, Priority: value.Priority,
+		DisabledSource: string(value.DisabledSource), DisabledReason: truncateRecoveryText(value.DisabledReason),
+		ReauthKind: string(value.ReauthKind), RecoveryAttempts: value.RecoveryAttempts, RecoveryNextCheckAt: value.RecoveryNextCheckAt,
+		RecoveryLastCheckAt: value.RecoveryLastCheckAt, RecoveryLastError: truncateRecoveryText(value.RecoveryLastError),
 		MaxConcurrent: value.MaxConcurrent, MinimumRemaining: value.MinimumRemaining, FailureCount: value.FailureCount,
 		CooldownUntil: value.CooldownUntil, LastError: value.LastError, LastUsedAt: value.LastUsedAt,
 		ObservedModel: value.ObservedModel, ObservedModelAt: value.ObservedModelAt,
@@ -304,4 +310,11 @@ func toAuditAttemptDomain(value requestAuditAttemptModel) (audit.Attempt, error)
 		TransportError:        value.TransportError,
 		ErrorChain:            errorChain,
 	}, nil
+}
+
+func truncateRecoveryText(value string) string {
+	if len(value) > 512 {
+		return value[:512]
+	}
+	return value
 }

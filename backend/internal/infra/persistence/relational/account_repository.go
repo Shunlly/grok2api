@@ -1383,8 +1383,16 @@ func upsertKnownAccountByIdentity(tx *gorm.DB, value account.Credential, existin
 		row.EgressNodeID = existing.EgressNodeID
 		row.EgressAssignmentMode = existing.EgressAssignmentMode
 		row.EgressAssignedAt = existing.EgressAssignedAt
+		row.DisabledSource = existing.DisabledSource
+		row.DisabledReason = existing.DisabledReason
+		row.ReauthKind = existing.ReauthKind
+		row.RecoveryAttempts = existing.RecoveryAttempts
+		row.RecoveryNextCheckAt = existing.RecoveryNextCheckAt
+		row.RecoveryLastCheckAt = existing.RecoveryLastCheckAt
+		row.RecoveryLastError = existing.RecoveryLastError
 		// reauth_marked_at 与 Update 路径一致：保持 reauth 时永不被普通 upsert 改写。
 		applyReauthMarkedAtTransition(&row, *existing)
+		applyRecoveryNormalization(&row)
 		if err := tx.Save(&row).Error; err != nil {
 			return repository.AccountUpsertResult{}, accountModel{}, err
 		}
@@ -1438,6 +1446,7 @@ func (r *AccountRepository) Update(ctx context.Context, value account.Credential
 		row.IdentityKey = existing.IdentityKey
 		row.CreatedAt = existing.CreatedAt
 		applyReauthMarkedAtTransition(&row, existing)
+		applyRecoveryNormalization(&row)
 		if err := tx.Save(&row).Error; err != nil {
 			return err
 		}
@@ -1466,6 +1475,30 @@ func applyReauthMarkedAtTransition(row *accountModel, existing accountModel) {
 		return
 	}
 	row.ReauthMarkedAt = nil
+}
+
+// applyRecoveryNormalization keeps disable-source and recovery bookkeeping
+// consistent with enabled/auth_status on every full-row write.
+func applyRecoveryNormalization(row *accountModel) {
+	if row.Enabled {
+		row.DisabledSource = ""
+		row.DisabledReason = ""
+	} else if row.DisabledSource == "" {
+		row.DisabledSource = string(account.DisabledSourceAdmin)
+	}
+	if row.AuthStatus != string(account.AuthStatusReauthRequired) {
+		row.ReauthKind = ""
+		if row.Enabled || row.DisabledSource != string(account.DisabledSourceAutoQuality) {
+			row.RecoveryAttempts = 0
+			row.RecoveryNextCheckAt = nil
+			row.RecoveryLastCheckAt = nil
+			row.RecoveryLastError = ""
+		}
+	}
+}
+
+func clearedRecoveryColumns() map[string]any {
+	return map[string]any{"reauth_kind": "", "recovery_attempts": 0, "recovery_next_check_at": nil, "recovery_last_check_at": nil, "recovery_last_error": ""}
 }
 
 func saveAccountRelations(tx *gorm.DB, value account.Credential, accountID uint64) error {
@@ -1601,6 +1634,17 @@ func (r *AccountRepository) UpdateMany(ctx context.Context, providerValue accoun
 	values := make(map[string]any, 4)
 	if updates.Enabled != nil {
 		values["enabled"] = *updates.Enabled
+		if *updates.Enabled {
+			values["disabled_source"] = ""
+			values["disabled_reason"] = ""
+		} else {
+			source := account.DisabledSourceAdmin
+			if updates.DisabledSource != "" {
+				source = updates.DisabledSource
+			}
+			values["disabled_source"] = string(source)
+			values["disabled_reason"] = truncateRecoveryText(updates.DisabledReason)
+		}
 	}
 	if updates.Priority != nil {
 		values["priority"] = *updates.Priority
@@ -1638,6 +1682,11 @@ func (r *AccountRepository) UpdateMany(ctx context.Context, providerValue accoun
 				return result.Error
 			}
 			updated += result.RowsAffected
+			if updates.Enabled != nil && *updates.Enabled {
+				if err := tx.Model(&accountModel{}).Where("provider = ? AND id IN ? AND auth_status = ?", providerValue, ids[start:end], string(account.AuthStatusActive)).Updates(clearedRecoveryColumns()).Error; err != nil {
+					return err
+				}
+			}
 		}
 		if providerValue == account.ProviderBuild && updates.Enabled != nil && !*updates.Enabled {
 			if err := tx.Where("account_id IN ?", ids).Delete(&accountEgressLeaseBlockModel{}).Error; err != nil {
@@ -2035,6 +2084,9 @@ func (r *AccountRepository) UpdateTokens(ctx context.Context, id uint64, accessT
 			updates["encrypted_refresh"] = refreshToken
 		}
 		if err := tx.Model(&accountCredentialModel{}).Where("account_id = ?", id).Updates(updates).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&accountModel{}).Where("id = ? AND auth_status = ?", id, string(account.AuthStatusReauthRequired)).Updates(clearedRecoveryColumns()).Error; err != nil {
 			return err
 		}
 		return tx.Model(&accountModel{}).Where("id = ?", id).Updates(map[string]any{"auth_status": string(account.AuthStatusActive), "last_error": "", "reauth_marked_at": nil}).Error

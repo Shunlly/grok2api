@@ -167,6 +167,7 @@ func (h *Handler) Register(router *gin.RouterGroup) {
 	router.PATCH("/accounts/:id", h.update)
 	router.DELETE("/accounts/:id", h.delete)
 	router.POST("/accounts/:id/clear-cooldown", h.clearCooldown)
+	router.POST("/accounts/:id/recheck", h.recheck)
 	router.POST("/accounts/:id/refresh-token", h.refreshToken)
 	router.POST("/accounts/:id/refresh-billing", h.refreshBilling)
 	router.POST("/accounts/:id/refresh-quota", h.refreshWebQuota)
@@ -309,6 +310,13 @@ type accountResponse struct {
 	FailureCount             int        `json:"failureCount"`
 	CooldownUntil            *time.Time `json:"cooldownUntil,omitempty"`
 	LastError                string     `json:"lastError,omitempty"`
+	DisabledSource           string     `json:"disabledSource,omitempty"`
+	DisabledReason           string     `json:"disabledReason,omitempty"`
+	ReauthKind               string     `json:"reauthKind,omitempty"`
+	RecoveryAttempts         int        `json:"recoveryAttempts,omitempty"`
+	RecoveryNextCheckAt      *time.Time `json:"recoveryNextCheckAt,omitempty"`
+	RecoveryLastCheckAt      *time.Time `json:"recoveryLastCheckAt,omitempty"`
+	RecoveryLastError        string     `json:"recoveryLastError,omitempty"`
 	// EnabledDoesNotClearCooldown is set on PATCH when enabled was changed
 	// while the account is still cooling. Toggling enabled is not a health reset.
 	EnabledDoesNotClearCooldown bool                      `json:"enabledDoesNotClearCooldown,omitempty"`
@@ -1304,6 +1312,31 @@ func (h *Handler) clearCooldown(c *gin.Context) {
 	response.Success(c, http.StatusOK, newAccountResponse(value))
 }
 
+type recheckResponse struct {
+	Result  accountapp.RecheckResult `json:"result"`
+	Account accountResponse          `json:"account"`
+}
+
+// recheck runs one re-activation probe now. Admin-disabled and permanently
+// failed accounts are reported as skipped/permanent and never changed.
+func (h *Handler) recheck(c *gin.Context) {
+	id, ok := pathID(c)
+	if !ok {
+		return
+	}
+	result, err := h.service.RecheckAccount(c.Request.Context(), id)
+	if err != nil {
+		h.writeServiceError(c, "accountRecheckFailed", err, http.StatusInternalServerError, "账号重检失败")
+		return
+	}
+	value, err := h.service.Get(c.Request.Context(), id)
+	if err != nil {
+		h.writeServiceError(c, "accountRecheckFailed", err, http.StatusInternalServerError, "账号重检失败")
+		return
+	}
+	response.Success(c, http.StatusOK, recheckResponse{Result: result, Account: newAccountResponse(value)})
+}
+
 func (h *Handler) delete(c *gin.Context) {
 	id, ok := pathID(c)
 	if !ok {
@@ -1531,6 +1564,9 @@ func newAccountResponse(value accountapp.View) accountResponse {
 		RefreshFailures: c.RefreshFailureCount, LastRefreshErrorStatus: c.LastRefreshErrorStatus, LastRefreshError: c.LastRefreshErrorCode, LastRefreshErrorMessage: c.LastRefreshErrorMessage, LastRefreshErrorResponse: c.LastRefreshErrorResponse,
 		Priority: c.Priority, MaxConcurrent: c.MaxConcurrent, MinimumRemaining: c.MinimumRemaining,
 		FailureCount: c.FailureCount, CooldownUntil: c.CooldownUntil, LastError: c.LastError,
+		DisabledSource: string(accountdomain.EffectiveDisabledSource(c.Enabled, c.DisabledSource)), DisabledReason: c.DisabledReason,
+		ReauthKind: string(c.ReauthKind), RecoveryAttempts: c.RecoveryAttempts, RecoveryNextCheckAt: c.RecoveryNextCheckAt,
+		RecoveryLastCheckAt: c.RecoveryLastCheckAt, RecoveryLastError: c.RecoveryLastError,
 		LastUsedAt: c.LastUsedAt, LinkedAccountID: c.LinkedAccountID, LinkedName: c.LinkedAccountName, LinkedProvider: string(c.LinkedProvider),
 		CreatedAt: c.CreatedAt, ObservedModel: c.ObservedModel, ObservedModelAt: c.ObservedModelAt,
 		CloudflareCookieConfigured: c.EncryptedCloudflareCookie != "",

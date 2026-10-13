@@ -69,6 +69,7 @@ type Config struct {
 	Audit             AuditConfig             `yaml:"audit"`
 	QualityGuard      QualityGuardConfig      `yaml:"qualityGuard"`
 	Canary            CanaryConfig            `yaml:"canary"`
+	AutoReactivate    AutoReactivateConfig    `yaml:"autoReactivate"`
 	ClientKeyDefaults ClientKeyDefaultsConfig `yaml:"clientKeyDefaults"`
 	Accounts          AccountsConfig          `yaml:"-"`
 }
@@ -269,6 +270,16 @@ type CanaryConfig struct {
 	MaxOutputTokens int      `yaml:"maxOutputTokens"`
 	ProbeTimeout    Duration `yaml:"probeTimeout"`
 	RetentionDays   int      `yaml:"retentionDays"`
+}
+
+// AutoReactivateConfig controls automatic re-activation of accounts whose
+// failure was classified as transient. Admin disables and permanent failures
+// (bans, revoked refresh tokens) are never touched.
+type AutoReactivateConfig struct {
+	Enabled                bool     `yaml:"enabled"`
+	Interval               Duration `yaml:"interval"`
+	MaxAge                 Duration `yaml:"maxAge"`
+	IncludeQualityDisabled bool     `yaml:"includeQualityDisabled"`
 }
 
 // QualityGuardConfig defines the optional egress-quality sidecar policy.
@@ -732,6 +743,12 @@ func (c Config) Validate() error {
 	if c.Canary.Enabled && c.Canary.Interval.Value() < 10*time.Minute {
 		return errors.New("canary.interval 不能小于 10m")
 	}
+	if c.AutoReactivate.Interval.Value() < time.Minute || c.AutoReactivate.Interval.Value() > 24*time.Hour {
+		return errors.New("autoReactivate.interval 必须在 1 分钟到 24 小时之间")
+	}
+	if c.AutoReactivate.MaxAge.Value() < time.Hour || c.AutoReactivate.MaxAge.Value() > 30*24*time.Hour {
+		return errors.New("autoReactivate.maxAge 必须在 1 小时到 30 天之间")
+	}
 	if c.Canary.MaxOutputTokens < 0 || c.Canary.MaxOutputTokens > 32000 {
 		return errors.New("canary.maxOutputTokens 必须在 0 到 32000 之间")
 	}
@@ -972,6 +989,9 @@ func defaultConfig() Config {
 			Enabled: false, Interval: Duration(6 * time.Hour), InitialDelay: Duration(10 * time.Minute),
 			Model: "grok-4.7", ReasoningEffort: "high", MaxOutputTokens: 6000,
 			ProbeTimeout: Duration(5 * time.Minute), RetentionDays: 30,
+		},
+		AutoReactivate: AutoReactivateConfig{
+			Enabled: true, Interval: Duration(10 * time.Minute), MaxAge: Duration(5 * 24 * time.Hour), IncludeQualityDisabled: false,
 		},
 		QualityGuard: QualityGuardConfig{
 			Model: "grok-4.6", Mode: "hybrid",

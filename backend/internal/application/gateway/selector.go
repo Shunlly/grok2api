@@ -887,7 +887,7 @@ func (s *Selector) acquirePinned(ctx context.Context, provider account.Provider,
 			if !ignoreEgressLeaseBlock && candidateEgressLeaseCooling(candidate, value, now) {
 				return nil, &SelectionUnavailableError{Reason: SelectionCooling, RetryAfter: retryDelay(now, candidate.EgressLeaseBlock.CooldownUntil)}
 			}
-			if value.CooldownUntil != nil && now.Before(*value.CooldownUntil) {
+			if value.CooldownUntil != nil && now.Before(*value.CooldownUntil) && !isRecoveryProbe(ctx) {
 				return nil, &SelectionUnavailableError{Reason: SelectionCooling, RetryAfter: retryDelay(now, *value.CooldownUntil)}
 			}
 			if recovery := candidate.QuotaRecovery; recovery != nil && recovery.Status != account.QuotaRecoveryStatusActive {
@@ -1264,8 +1264,14 @@ func (s *Selector) markMissingThinking(ctx context.Context, credential account.C
 
 func (s *Selector) disableAccount(ctx context.Context, credential account.Credential) error {
 	disabled := false
-	if _, err := s.accounts.UpdateMany(ctx, credential.Provider, []uint64{credential.ID}, repository.AccountUpdates{Enabled: &disabled}); err != nil {
+	if _, err := s.accounts.UpdateMany(ctx, credential.Provider, []uint64{credential.ID}, repository.AccountUpdates{
+		Enabled: &disabled, DisabledSource: account.DisabledSourceAutoQuality, DisabledReason: "连续缺少思考过程，自动停用",
+	}); err != nil {
 		return err
+	}
+	if recovery, ok := s.accounts.(repository.AccountRecoveryRepository); ok {
+		next := time.Now().UTC().Add(account.RecoveryBackoff(0))
+		_ = recovery.SaveRecoveryState(ctx, credential.ID, repository.AccountRecoveryState{NextCheckAt: &next})
 	}
 	s.ApplyInvalidation(repository.InvalidationEvent{
 		Kind: repository.InvalidationAccountStateChanged, Provider: credential.Provider, AccountID: credential.ID,
