@@ -333,7 +333,7 @@ export type AccountRecheckDTO = {
 };
 
 const decodeAccountRecheck = createObjectDecoder<AccountRecheckDTO>("account recheck", {
-  result: hasShape({ accountId: isOptional(isString), outcome: isOneOf("reactivated", "healthy", "failed", "permanent", "skipped"), message: isString, attempts: isNumber, nextCheckAt: isOptional(isString) }),
+  result: hasShape({ accountId: isString, outcome: isOneOf("reactivated", "healthy", "failed", "permanent", "skipped"), message: isString, attempts: isNumber, nextCheckAt: isOptional(isString) }),
   account: accountValidator,
 });
 
