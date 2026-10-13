@@ -2431,6 +2431,42 @@ func (r *AccountRepository) DeleteEgressLeaseBlock(ctx context.Context, accountI
 	return false, nil
 }
 
+func (r *AccountRepository) ListActiveModelQuotaBlocks(ctx context.Context, accountIDs []uint64, now time.Time) (map[uint64][]account.ModelQuotaBlock, error) {
+	result := make(map[uint64][]account.ModelQuotaBlock)
+	if len(accountIDs) == 0 {
+		return result, nil
+	}
+	for start := 0; start < len(accountIDs); start += 500 {
+		end := min(start+500, len(accountIDs))
+		var rows []accountModelQuotaBlockModel
+		if err := r.db.db.WithContext(ctx).Where("account_id IN ? AND cooldown_until > ?", accountIDs[start:end], now.UTC()).Order("account_id ASC, upstream_model ASC").Find(&rows).Error; err != nil {
+			return nil, err
+		}
+		for _, row := range rows {
+			result[row.AccountID] = append(result[row.AccountID], account.ModelQuotaBlock{AccountID: row.AccountID, UpstreamModel: row.UpstreamModel, Reason: row.Reason, CooldownUntil: row.CooldownUntil.UTC(), UpdatedAt: row.UpdatedAt.UTC()})
+		}
+	}
+	return result, nil
+}
+
+func (r *AccountRepository) DeleteModelQuotaBlock(ctx context.Context, accountID uint64, upstreamModel string) (int64, error) {
+	if accountID == 0 {
+		return 0, repository.ErrNotFound
+	}
+	query := r.db.db.WithContext(ctx).Where("account_id = ?", accountID)
+	if model := strings.TrimSpace(upstreamModel); model != "" {
+		query = query.Where("upstream_model = ?", model)
+	}
+	result := query.Delete(&accountModelQuotaBlockModel{})
+	if result.Error != nil {
+		return 0, result.Error
+	}
+	if result.RowsAffected > 0 {
+		r.notifyInvalidation(ctx, repository.InvalidationEvent{Kind: repository.InvalidationAccountModelQuotaChanged, AccountID: accountID, UpstreamModel: strings.TrimSpace(upstreamModel)})
+	}
+	return result.RowsAffected, nil
+}
+
 func (r *AccountRepository) PruneExpiredModelQuotaBlocks(ctx context.Context, now time.Time, limit int) (int64, error) {
 	if limit <= 0 || limit > 1000 {
 		limit = 100

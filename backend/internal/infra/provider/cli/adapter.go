@@ -823,6 +823,8 @@ type buildModelCatalogEntry struct {
 	SupportsReasoningEffort  *bool  `json:"supports_reasoning_effort"`
 	SupportsReasoningCamel   *bool  `json:"supportsReasoningEffort"`
 	SupportsBackendSearch    bool   `json:"supports_backend_search"`
+	AutoCompactPercent       int64  `json:"auto_compact_threshold_percent"`
+	AutoCompactPercentCamel  int64  `json:"autoCompactThresholdPercent"`
 	// reasoning_efforts entries are either bare strings ("high") or objects
 	// {value,id,label,description,default}; decode lazily per entry.
 	ReasoningEfforts      []json.RawMessage `json:"reasoning_efforts"`
@@ -896,13 +898,23 @@ func (e buildModelCatalogEntry) upstreamProfile() modeldomain.UpstreamModelProfi
 		maxCompletion = e.MaxCompletionTokensCamel
 	}
 	return modeldomain.UpstreamModelProfile{
-		ReasoningEfforts:        menu,
-		DefaultReasoningEffort:  firstNonEmpty(menuDefault, e.ReasoningEffort, e.ReasoningEffortCamel),
-		SupportsReasoningEffort: supports,
-		ContextWindow:           clampInt(contextWindow),
-		MaxCompletionTokens:     clampInt(maxCompletion),
-		SupportsBackendSearch:   e.SupportsBackendSearch,
+		ReasoningEfforts:            menu,
+		DefaultReasoningEffort:      firstNonEmpty(menuDefault, e.ReasoningEffort, e.ReasoningEffortCamel),
+		SupportsReasoningEffort:     supports,
+		ContextWindow:               clampInt(contextWindow),
+		MaxCompletionTokens:         clampInt(maxCompletion),
+		SupportsBackendSearch:       e.SupportsBackendSearch,
+		AutoCompactThresholdPercent: clampInt(firstPositiveInt64(e.AutoCompactPercent, e.AutoCompactPercentCamel)),
 	}
+}
+
+func firstPositiveInt64(values ...int64) int64 {
+	for _, value := range values {
+		if value > 0 {
+			return value
+		}
+	}
+	return 0
 }
 
 func clampInt(value int64) int {

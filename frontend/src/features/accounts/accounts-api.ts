@@ -111,6 +111,7 @@ export type AccountDTO = {
   createdAt: string;
   billing?: BillingDTO;
   quota: QuotaDTO;
+  modelQuotaBlocks?: Array<{ model: string; reason: string; cooldownUntil: string }>;
   quotaWindows?: Array<{ mode: string; remaining: number; total: number; usagePercent: number; breakdown?: Array<{ productCode: number; usagePercent: number }>; windowSeconds: number; resetAt?: string; syncedAt?: string; source: "default" | "estimated" | "upstream" }>;
 };
 
@@ -197,6 +198,7 @@ const accountValidator = hasShape({
   enabledDoesNotClearCooldown: isOptional(isBoolean),
   linkedAccountId: isOptional(isString), linkedAccountName: isOptional(isString), linkedProvider: isOptional(isOneOf("grok_build", "grok_web")), linkedAccounts: isOptional(isArrayOf(linkedAccountValidator)),
   createdAt: isString, billing: isOptional(billingValidator), quota: quotaValidator, quotaWindows: isOptional(isArrayOf(quotaWindowValidator)),
+  modelQuotaBlocks: isOptional(isArrayOf(hasShape({ model: isString, reason: isString, cooldownUntil: isString }))),
 });
 const decodeBilling = createValidatedDecoder<BillingDTO>("billing", billingValidator);
 const decodeAccount = createValidatedDecoder<AccountDTO>("account", accountValidator);
@@ -309,6 +311,10 @@ export function refreshAccountBilling(id: string): Promise<BillingDTO> {
 
 export function refreshAccountToken(id: string): Promise<AccountDTO> {
   return apiRequest(`/api/admin/v1/accounts/${id}/refresh-token`, { method: "POST" }, decodeAccount);
+}
+
+export function clearAccountModelQuotaBlocks(id: string): Promise<{ cleared: number }> {
+  return apiRequest(`/api/admin/v1/accounts/${id}/model-quota-blocks`, { method: "DELETE" }, decodeCountResult<{ cleared: number }>("cleared"));
 }
 
 export function clearAccountCooldown(id: string): Promise<AccountDTO> {

@@ -38,6 +38,7 @@ import {
   acceptWebAccountTerms,
   cleanupAccounts,
   clearAccountCooldown,
+  clearAccountModelQuotaBlocks,
   deleteAccount,
   deleteAccounts,
   previewAccountDeletion,
@@ -514,6 +515,15 @@ export function AccountsPage() {
     onSuccess: () => {
       invalidateAccountData();
       toast.success(t("accounts.cooldownCleared"));
+    },
+    onError: showError,
+  });
+
+  const clearModelBlocksMutation = useMutation({
+    mutationFn: clearAccountModelQuotaBlocks,
+    onSuccess: (result) => {
+      invalidateAccountData();
+      toast.success(t("accounts.modelBlocksCleared", { count: result.cleared }));
     },
     onError: showError,
   });
@@ -1499,7 +1509,13 @@ export function AccountsPage() {
 	                    <TableCell className="min-w-0"><AccountNameCell account={account} /></TableCell>
                     <TableCell className="text-center whitespace-nowrap">{provider === "grok_web" ? <WebAccountType tier={account.webTier} /> : provider === "grok_console" ? <AccountTypeText label={t("accountType.console")} variant="free" /> : <AccountType quota={account.quota} />}</TableCell>
                     <TableCell className="text-center whitespace-nowrap"><AccountStatus account={account} /></TableCell>
-                    <TableCell className={provider === "grok_build" ? undefined : "px-6"}>{provider === "grok_web" ? <WebQuota windows={account.quotaWindows ?? []} locale={i18n.language} tier={account.webTier} /> : provider === "grok_console" ? <ConsoleQuota windows={account.quotaWindows ?? []} locale={i18n.language} /> : <AccountQuota quota={account.quota} billing={account.billing} locale={i18n.language} />}</TableCell>
+                    <TableCell className={provider === "grok_build" ? undefined : "px-6"}>{provider === "grok_web" ? <WebQuota windows={account.quotaWindows ?? []} locale={i18n.language} tier={account.webTier} /> : provider === "grok_console" ? <ConsoleQuota windows={account.quotaWindows ?? []} locale={i18n.language} /> : <AccountQuota quota={account.quota} billing={account.billing} locale={i18n.language} />}
+                      {account.modelQuotaBlocks?.length ? (
+                        <Tooltip>
+                          <TooltipTrigger asChild><span tabIndex={0} className="mt-0.5 inline-block cursor-help rounded bg-amber-100 px-1.5 text-[11px] font-medium text-amber-800 dark:bg-amber-950 dark:text-amber-300">{t("accounts.modelBlocks", { count: account.modelQuotaBlocks.length })}</span></TooltipTrigger>
+                          <TooltipContent><div className="space-y-0.5 text-xs">{account.modelQuotaBlocks.map((block) => <div key={block.model}>{t("accounts.modelBlockItem", { model: block.model, reason: block.reason, until: new Date(block.cooldownUntil).toLocaleString(i18n.language) })}</div>)}</div></TooltipContent>
+                        </Tooltip>
+                      ) : null}</TableCell>
                     {provider === "grok_build" ? <TableCell className="whitespace-nowrap pl-4 text-xs">
                       {account.refreshable ? (
                         <Tooltip>
@@ -1526,6 +1542,11 @@ export function AccountsPage() {
                           {account.cooldownUntil && new Date(account.cooldownUntil) > new Date() ? (
                             <DropdownMenuItem onClick={() => clearCooldownMutation.mutate(account.id)} disabled={clearCooldownMutation.isPending}>
                               <TimerOff />{t("accounts.clearCooldown")}
+                            </DropdownMenuItem>
+                          ) : null}
+                          {account.modelQuotaBlocks?.length ? (
+                            <DropdownMenuItem onClick={() => clearModelBlocksMutation.mutate(account.id)} disabled={clearModelBlocksMutation.isPending}>
+                              <TimerOff />{t("accounts.clearModelBlocks")}
                             </DropdownMenuItem>
                           ) : null}
                           <DropdownMenuItem onClick={() => provider === "grok_build" ? billingMutation.mutate(account.id) : quotaMutation.mutate(account.id)}><RefreshCw />{provider === "grok_build" ? t("accounts.refreshBilling") : t("accounts.refreshModeQuota")}</DropdownMenuItem>

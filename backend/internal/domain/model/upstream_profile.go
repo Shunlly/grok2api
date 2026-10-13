@@ -27,6 +27,9 @@ type UpstreamModelProfile struct {
 	MaxCompletionTokens int
 	// SupportsBackendSearch mirrors `supports_backend_search`.
 	SupportsBackendSearch bool
+	// AutoCompactThresholdPercent mirrors `auto_compact_threshold_percent`
+	// (1-100); zero when absent.
+	AutoCompactThresholdPercent int
 }
 
 var (
@@ -64,6 +67,9 @@ func NormalizeUpstreamProfile(profile UpstreamModelProfile) UpstreamModelProfile
 	}
 	if profile.MaxCompletionTokens < 0 {
 		profile.MaxCompletionTokens = 0
+	}
+	if profile.AutoCompactThresholdPercent < 0 || profile.AutoCompactThresholdPercent > 100 {
+		profile.AutoCompactThresholdPercent = 0
 	}
 	return profile
 }

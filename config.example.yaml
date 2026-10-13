@@ -131,7 +131,7 @@ audit:
 # 质量守护 → 金丝雀探测 and NEVER affect routing, cooldown or enablement.
 canary:
   enabled: false
-  interval: 2h
+  interval: 6h
   initialDelay: 10m
   model: grok-4.7
   reasoningEffort: high
