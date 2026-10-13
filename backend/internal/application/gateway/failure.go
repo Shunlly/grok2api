@@ -168,6 +168,16 @@ func newHTTPUpstreamFailure(status int, body []byte, accountID uint64, accountNa
 		if upstreamMessage != "" {
 			failure.PublicMessage = upstreamMessage
 		}
+	case http.StatusUpgradeRequired:
+		// 426：上游判定伪装的 CLI 版本过低。所有账号共用同一 ClientVersion，
+		// 换号重试无意义，直接以明确提示失败，提醒运维更新设置。
+		failure.Code = "upstream_client_outdated"
+		failure.HTTPStatus = http.StatusBadGateway
+		failure.RequestScopedForbidden = true
+		failure.PublicMessage = "上游提示客户端版本过低（HTTP 426），请在管理后台「设置 → Grok Build」把 ClientVersion 更新到上游要求的版本"
+		if upstreamMessage != "" {
+			failure.PublicMessage += "；上游原文：" + upstreamMessage
+		}
 	case http.StatusTooManyRequests:
 		failure.Code = "upstream_rate_limited"
 		failure.PublicMessage = "上游请求频率受限"

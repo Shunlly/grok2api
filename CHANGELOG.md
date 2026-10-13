@@ -2,6 +2,21 @@
 
 Shunlly/grok2api fork of [chenyme/grok2api](https://github.com/chenyme/grok2api).
 
+## v3.2.1 — 2026-10-13
+
+### Added
+- **共享用量池调度**：Build 账号账单快照 `creditUsagePercent`（SuperGrok 周共享用量池）或上游额度窗口 `usagePercent` ≥ 90% 且快照不超过 6 小时时，选号排序降到健康账号之后，尽量在撞 429 前让出流量（仍可用，只是后选）。面板原有的周用量百分比与重置时间继续显示。
+- **单模型额度封锁可见 + 解除**（上游 #1061）：账号列表与详情返回 `modelQuotaBlocks`（模型、原因、到期时间），面板额度列显示「N 个模型封锁」及明细，操作菜单新增「解除模型封锁」；新接口 `DELETE /api/admin/v1/accounts/:id/model-quota-blocks[?model=]`。
+- **自动压缩阈值按上游目录校准**：读取 Build 模型目录的 `auto_compact_threshold_percent`（已读取的 `context_window` 继续生效），用于 Codex 目录 `auto_compact_token_limit`；缺省仍为 85%，300k 上限不变。
+- 代理导入支持 `IP:端口:用户名:密码`（上游 PR #1069）。
+
+### Fixed
+- Web Imagine 按 requestId 过滤 WebSocket 帧，修复返回历史旧图/串帧（上游 PR #1056）。
+- 上游 HTTP 426（CLI 版本过低，#1068）返回明确错误 `upstream_client_outdated`，提示更新 ClientVersion，并且不再换号重试。
+
+### Changed
+- 金丝雀探测默认间隔 2h → 6h。
+
 ## v3.2.0 — 2026-10-13
 
 ### Changed

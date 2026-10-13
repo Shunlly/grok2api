@@ -18,6 +18,7 @@ type candidateScore struct {
 	preferFreeBuild   bool
 	quotaKnown        bool
 	quotaAvailable    bool
+	poolNearlyUsed    bool
 	billingFresh      bool
 	inFlight          int
 	remaining         float64
@@ -84,6 +85,11 @@ func candidateScoreBetter(values []account.RoutingCandidate, leftScore, rightSco
 	}
 	if leftScore.quotaKnown != rightScore.quotaKnown {
 		return leftScore.quotaKnown
+	}
+	// 共享周用量池接近耗尽（≥90%）的账号排到后面，尽量在撞 429 前让出流量；
+	// 它们仍然可用，只在没有更健康的候选时才会被选中。
+	if leftScore.poolNearlyUsed != rightScore.poolNearlyUsed {
+		return !leftScore.poolNearlyUsed
 	}
 	if leftScore.preferFreeBuild != rightScore.preferFreeBuild {
 		return leftScore.preferFreeBuild
@@ -196,6 +202,7 @@ func (s *Selector) planCandidateIndexesWithHints(ctx context.Context, values []a
 			webCatalogSupport: candidate.Credential.Provider == account.ProviderWeb && len(tierOrder) > 0 && webTierInOrder(tierOrder, candidate.Credential.WebTier),
 			preferFreeBuild:   preferFreeBuild && candidate.IsKnownFreeBuild(),
 			inFlight:          inFlight[position], lastSelected: s.lastSelectedAt[candidate.Credential.ID],
+			poolNearlyUsed:    usagePoolNearlyExhausted(candidate, now),
 		}
 		// 只有真实上游快照能够证明账号具备该模式额度。历史默认值和
 		// 本地预测值都属于未知能力，只保留为路由兜底。
@@ -258,4 +265,25 @@ func concurrencySnapshotKey(keys []string) [32]byte {
 
 func accountConcurrencyKey(accountID uint64) string {
 	return repository.AccountConcurrencyKey(accountID)
+}
+
+// usagePoolNearlyExhaustedPercent 是共享用量池视为"即将耗尽"的已用百分比阈值。
+const usagePoolNearlyExhaustedPercent = 90.0
+
+// usagePoolNearlyExhausted 只基于上游真实返回的数据判断：账单接口的
+// creditUsagePercent（SuperGrok 周共享用量池）或上游同步的额度窗口 usagePercent。
+// 快照过旧（>6h）时不参与判断，避免用陈旧数据压低账号。
+func usagePoolNearlyExhausted(candidate account.RoutingCandidate, now time.Time) bool {
+	if billing := candidate.Billing; billing != nil && !billing.SyncedAt.IsZero() && now.Sub(billing.SyncedAt) <= 6*time.Hour {
+		if billing.CreditUsagePercent >= usagePoolNearlyExhaustedPercent && billing.CreditUsagePercent < 100 {
+			return true
+		}
+	}
+	if window := candidate.QuotaWindow; window != nil && window.Source == account.QuotaSourceUpstream {
+		fresh := window.SyncedAt == nil || now.Sub(*window.SyncedAt) <= 6*time.Hour
+		if fresh && window.UsagePercent >= usagePoolNearlyExhaustedPercent && window.Remaining > 0 {
+			return true
+		}
+	}
+	return false
 }

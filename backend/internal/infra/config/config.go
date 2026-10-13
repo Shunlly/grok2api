@@ -969,7 +969,7 @@ func defaultConfig() Config {
 			LedgerUnhealthyGrace: Duration(10 * time.Second), LedgerQueueHighWatermarkPct: 90,
 		},
 		Canary: CanaryConfig{
-			Enabled: false, Interval: Duration(2 * time.Hour), InitialDelay: Duration(10 * time.Minute),
+			Enabled: false, Interval: Duration(6 * time.Hour), InitialDelay: Duration(10 * time.Minute),
 			Model: "grok-4.7", ReasoningEffort: "high", MaxOutputTokens: 6000,
 			ProbeTimeout: Duration(5 * time.Minute), RetentionDays: 30,
 		},

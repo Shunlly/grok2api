@@ -121,6 +121,7 @@ func lookupGrokCapability(providerValue account.Provider, slug string) (grokMode
 		if profile, exists := modeldomain.UpstreamProfile(slug); exists && profile.ContextWindow > 0 {
 			capability.contextWindow = profile.ContextWindow
 		}
+
 	}
 	return capability, levels
 }
@@ -194,7 +195,7 @@ func newCodexModelCatalog(items []modelListItem) codexModelCatalog {
 			ContextWindow:                     capability.contextWindow,
 			MaxContextWindow:                  capability.contextWindow,
 			EffectiveContextWindowPercent:     95,
-			AutoCompactTokenLimit:             codexAutoCompactTokenLimit(capability.contextWindow),
+			AutoCompactTokenLimit:             codexAutoCompactTokenLimitPercent(capability.contextWindow, upstreamAutoCompactPercent(item.Provider, item.ID)),
 			ExperimentalSupportedTools:        []string{},
 			InputModalities:                   modalities,
 			SupportsSearchTool:                false,
@@ -245,11 +246,36 @@ const (
 	codexAutoCompactMaxLimit = 300000
 )
 
+// upstreamAutoCompactPercent returns the Build catalog's
+// auto_compact_threshold_percent for slug, or 0 when it was not published.
+func upstreamAutoCompactPercent(providerValue account.Provider, slug string) int {
+	if providerValue != account.ProviderBuild {
+		return 0
+	}
+	if base, _, ok := modeldomain.ParseReasoningModelAlias(slug); ok {
+		slug = base
+	}
+	if profile, exists := modeldomain.UpstreamProfile(slug); exists {
+		return profile.AutoCompactThresholdPercent
+	}
+	return 0
+}
+
 func codexAutoCompactTokenLimit(contextWindow int) *int {
+	return codexAutoCompactTokenLimitPercent(contextWindow, 0)
+}
+
+// codexAutoCompactTokenLimitPercent uses the catalog's
+// auto_compact_threshold_percent when the upstream publishes one, and the
+// 85% default otherwise. The 300k ceiling always applies.
+func codexAutoCompactTokenLimitPercent(contextWindow, percent int) *int {
 	if contextWindow <= 0 {
 		return nil
 	}
-	limit := contextWindow * codexAutoCompactPercent / 100
+	if percent <= 0 || percent > 100 {
+		percent = codexAutoCompactPercent
+	}
+	limit := contextWindow * percent / 100
 	if limit > codexAutoCompactMaxLimit {
 		limit = codexAutoCompactMaxLimit
 	}

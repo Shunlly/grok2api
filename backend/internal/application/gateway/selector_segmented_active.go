@@ -206,6 +206,7 @@ func segmentedCandidateCohorts(values []account.RoutingCandidate, indexes []int,
 			cohort.quotaKnown = true
 			cohort.quotaAvailable = candidate.QuotaWindow.Remaining > 0
 		}
+		cohort.poolNearlyUsed = usagePoolNearlyExhausted(candidate, now)
 		if candidate.Billing != nil {
 			cohort.billingFresh = now.Sub(candidate.Billing.SyncedAt) <= 30*time.Minute
 		}

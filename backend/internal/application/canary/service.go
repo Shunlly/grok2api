@@ -65,7 +65,7 @@ type Service struct {
 
 func NewService(cfg Config, clientKeyID uint64, prober Prober, accounts Accounts, store Store, logger *slog.Logger) *Service {
 	if cfg.Interval <= 0 {
-		cfg.Interval = 2 * time.Hour
+		cfg.Interval = 6 * time.Hour
 	}
 	if cfg.Model == "" {
 		cfg.Model = "grok-4.7"
