@@ -2,6 +2,13 @@
 
 Shunlly/grok2api fork of [chenyme/grok2api](https://github.com/chenyme/grok2api).
 
+## v3.1.9 — 2026-10-13
+
+### Fixed
+- SSE keepalive (v3.1.8): after an early 200 commit, stream chunks that began mid-event were mistaken for
+  JSON errors and a spurious `response.failed` was injected. Only the first body write can now be converted.
+  Header/status bookkeeping is serialized with the keepalive goroutine (race-detector clean).
+
 ## v3.1.8 — 2026-10-13
 
 ### Fixed

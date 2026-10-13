@@ -44,6 +44,7 @@ type sseKeepaliveWriter struct {
 	sse            bool
 	committedEarly bool
 	settled        bool
+	bodyStarted    bool
 	comments       int
 
 	stop chan struct{}
@@ -113,8 +114,14 @@ func (w *sseKeepaliveWriter) Write(data []byte) (int, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	payload := data
-	if w.committedEarly && !looksLikeSSE(data) {
+	// Only the handler's FIRST body write after an early commit can be a JSON
+	// error envelope. Later writes are stream chunks that may begin mid-event
+	// and must pass through untouched.
+	if w.committedEarly && !w.bodyStarted && bytes.HasPrefix(bytes.TrimSpace(data), []byte("{")) {
 		payload = convertJSONErrorToSSE(w.protocol, data)
+	}
+	if len(data) > 0 {
+		w.bodyStarted = true
 	}
 	if !w.ResponseWriter.Written() {
 		w.sse = looksLikeSSE(payload)
@@ -183,4 +190,36 @@ func convertJSONErrorToSSE(protocol streamProtocol, data []byte) []byte {
 	}
 	payload, _ := json.Marshal(event)
 	return []byte("event: response.failed\ndata: " + string(payload) + "\n\n")
+}
+
+// Header-state methods are serialized with the keepalive goroutine so gin's
+// size/status bookkeeping is never read and written concurrently.
+func (w *sseKeepaliveWriter) WriteHeader(code int) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.ResponseWriter.WriteHeader(code)
+}
+
+func (w *sseKeepaliveWriter) WriteHeaderNow() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.ResponseWriter.WriteHeaderNow()
+}
+
+func (w *sseKeepaliveWriter) Written() bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.ResponseWriter.Written()
+}
+
+func (w *sseKeepaliveWriter) Status() int {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.ResponseWriter.Status()
+}
+
+func (w *sseKeepaliveWriter) Size() int {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.ResponseWriter.Size()
 }
