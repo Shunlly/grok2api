@@ -184,6 +184,11 @@ func newHTTPUpstreamFailure(status int, body []byte, accountID uint64, accountNa
 			if upstreamMessage != "" {
 				failure.PublicMessage = upstreamMessage
 			}
+		} else if isCloudflareHTMLErrorBody(body) {
+			failure.Code = "upstream_cloudflare_error"
+			failure.PublicMessage = fmt.Sprintf("上游 Cloudflare 网关返回 HTML 错误页（HTTP %d），上游暂时不可用，请稍后重试", status)
+			failure.Fingerprint = fmt.Sprintf("%d:cloudflare_html", status)
+			return failure
 		} else {
 			failure.Code = "upstream_server_error"
 			failure.PublicMessage = "上游服务暂时异常"
@@ -219,6 +224,8 @@ func newTransportUpstreamFailure(err error, accountID uint64, accountName string
 		status, code, message = http.StatusBadGateway, "upstream_response_empty", "上游响应为空"
 	} else if errors.Is(err, errQualityEmptyStream) {
 		status, code, message = http.StatusBadGateway, "upstream_stream_empty", "上游流式响应为空"
+	} else if neterrorpkg.IsHTTP2ProtocolError(err) {
+		status, code, message = http.StatusBadGateway, "upstream_http2_protocol_error", "上游 HTTP/2 连接被重置（PROTOCOL_ERROR），通常由请求过大或出口网络异常引起，请稍后重试或压缩上下文"
 	} else if errors.Is(err, context.DeadlineExceeded) {
 		code, message = "upstream_timeout", "上游服务响应超时"
 	}
@@ -341,4 +348,22 @@ func truncateFailureCode(value string) string {
 		return value
 	}
 	return value[:100]
+}
+
+// isCloudflareHTMLErrorBody recognizes Cloudflare-generated HTML error pages
+// (502/520-526 "Bad gateway", challenge pages) that replace the JSON API body.
+func isCloudflareHTMLErrorBody(body []byte) bool {
+	if len(body) == 0 {
+		return false
+	}
+	head := body
+	if len(head) > 64<<10 {
+		head = head[:64<<10]
+	}
+	lower := strings.ToLower(string(head))
+	trimmed := strings.TrimSpace(lower)
+	if !strings.HasPrefix(trimmed, "<!doctype html") && !strings.HasPrefix(trimmed, "<html") && !strings.Contains(trimmed, "<head") {
+		return false
+	}
+	return containsAny(lower, "cloudflare", "cf-error-details", "cf-ray", "__cf_chl", "challenge-platform")
 }

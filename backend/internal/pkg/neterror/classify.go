@@ -106,3 +106,14 @@ func IsClientRequestCancel(ctx context.Context, err error) bool {
 	}
 	return errors.Is(err, context.Canceled)
 }
+
+// IsHTTP2ProtocolError identifies HTTP/2 stream/connection resets carrying
+// PROTOCOL_ERROR (e.g. "stream error: stream ID 3; PROTOCOL_ERROR"). These are
+// transport/egress faults, not account faults, and rarely recover by blind
+// immediate retries through the same path.
+func IsHTTP2ProtocolError(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), "PROTOCOL_ERROR")
+}

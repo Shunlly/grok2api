@@ -377,8 +377,8 @@ func TestRoutingMaxAttemptsSupportsLargeCredentialPools(t *testing.T) {
 	cfg := defaultConfig()
 	cfg.Secrets.JWTSecret = "12345678901234567890123456789012"
 	cfg.Secrets.CredentialEncryptionKey = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
-	if cfg.Routing.MaxAttempts != 999 {
-		t.Fatalf("default max attempts = %d, want 999", cfg.Routing.MaxAttempts)
+	if cfg.Routing.MaxAttempts != 5 {
+		t.Fatalf("default max attempts = %d, want 5", cfg.Routing.MaxAttempts)
 	}
 	if cfg.Routing.CapacityWait.Value() != 500*time.Millisecond {
 		t.Fatalf("default capacity wait = %s, want 500ms", cfg.Routing.CapacityWait.Value())
