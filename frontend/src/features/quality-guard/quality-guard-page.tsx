@@ -20,7 +20,6 @@ import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { CanaryPanel } from "@/features/quality-guard/canary-panel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { DegradeAccountsPanel } from "@/features/quality-guard/degrade-accounts-panel";
 import { ProbeProfilesPanel } from "@/features/quality-guard/probe-profiles-panel";
 import { getQualityGuardStatus, runQualityTest, updateQualityGuardPolicy, type QualityGuardEvent, type QualityGuardNodeState, type QualityGuardPolicy, type QualityGuardStatistics, type QualityGuardStatus, type QualityTestResult } from "@/features/quality-guard/quality-guard-api";
 import { createEgressNode, deleteEgressNodes, listEgressNodes, updateEgressNode, updateEgressNodesEnabled, type EgressNodeDTO, type EgressNodeInput } from "@/features/settings/settings-api";
@@ -233,7 +232,6 @@ export function QualityGuardPage() {
         <TabsList>
           <TabsTrigger value="nodes">{t("qualityGuard.nodesTab")}</TabsTrigger>
           <TabsTrigger value="profiles">{t("qualityGuard.profilesTab")}</TabsTrigger>
-          <TabsTrigger value="accounts">{t("qualityGuard.degrade.tab")}</TabsTrigger>
           <TabsTrigger value="canary">{t("qualityGuard.canary.tab")}</TabsTrigger>
         </TabsList>
         <TabsContent value="canary" className="mt-6">
@@ -241,14 +239,6 @@ export function QualityGuardPage() {
         </TabsContent>
         <TabsContent value="profiles" className="mt-6">
           <ProbeProfilesPanel />
-        </TabsContent>
-        <TabsContent value="accounts" className="mt-6">
-          <DegradeAccountsPanel
-            softTPS={status?.config?.soft_tps}
-            hardTPS={status?.config?.hard_tps}
-            failClosed={status?.config?.fail_closed}
-            minGenMs={status?.config?.min_generation_ms}
-          />
         </TabsContent>
         <TabsContent value="nodes" className="mt-6 space-y-6">
       {!status?.available ? <UnavailableState /> : (

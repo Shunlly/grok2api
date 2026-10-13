@@ -83,3 +83,71 @@ func (r *CanaryRepository) CountRounds(ctx context.Context) (int64, error) {
 func (r *CanaryRepository) DeleteBefore(ctx context.Context, cutoff time.Time) error {
 	return r.db.db.WithContext(ctx).Where("created_at < ?", cutoff).Delete(&canaryProbeModel{}).Error
 }
+
+// AccountQualityFlags aggregates real quality hits per account since the
+// cutoff: quality_degraded (missing thinking) audits and non-passing canary
+// probes. Speed classes are intentionally not included.
+func (r *CanaryRepository) AccountQualityFlags(ctx context.Context, since time.Time) ([]canary.AccountFlag, error) {
+	type degradedRow struct {
+		AccountID uint64
+		Hits      int64
+		Last      string
+	}
+	var degraded []degradedRow
+	if err := r.db.db.WithContext(ctx).Table("request_audits").
+		Select("account_id, COUNT(*) AS hits, MAX(created_at) AS last").
+		Where("account_id IS NOT NULL AND error_code = ? AND created_at >= ?", "quality_degraded", since).
+		Group("account_id").Scan(&degraded).Error; err != nil {
+		return nil, err
+	}
+	var failed []canaryProbeModel
+	if err := r.db.db.WithContext(ctx).Model(&canaryProbeModel{}).
+		Where("status IN ? AND created_at >= ?", []string{canary.StatusFail, canary.StatusError}, since).
+		Order("created_at DESC, id DESC").Find(&failed).Error; err != nil {
+		return nil, err
+	}
+	byID := map[uint64]*canary.AccountFlag{}
+	order := []uint64{}
+	get := func(id uint64) *canary.AccountFlag {
+		if flag, ok := byID[id]; ok {
+			return flag
+		}
+		byID[id] = &canary.AccountFlag{AccountID: id}
+		order = append(order, id)
+		return byID[id]
+	}
+	for _, row := range degraded {
+		flag := get(row.AccountID)
+		flag.DegradedHits = row.Hits
+		if parsed, ok := parseDBTime(row.Last); ok {
+			flag.LastDegradedAt = &parsed
+		}
+	}
+	for _, row := range failed {
+		flag := get(row.AccountID)
+		flag.CanaryFailures++
+		if flag.LastCanaryFailAt == nil {
+			at := row.CreatedAt.UTC()
+			flag.LastCanaryFailAt = &at
+			flag.LastCanaryStatus = row.Status
+			flag.LastCanaryReason = row.Reasons
+			if flag.LastCanaryReason == "" {
+				flag.LastCanaryReason = row.Error
+			}
+		}
+	}
+	out := make([]canary.AccountFlag, 0, len(order))
+	for _, id := range order {
+		out = append(out, *byID[id])
+	}
+	return out, nil
+}
+
+func parseDBTime(value string) (time.Time, bool) {
+	for _, layout := range []string{"2006-01-02 15:04:05.999999999-07:00", time.RFC3339Nano, "2006-01-02 15:04:05.999999999Z07:00", "2006-01-02 15:04:05"} {
+		if parsed, err := time.Parse(layout, value); err == nil {
+			return parsed.UTC(), true
+		}
+	}
+	return time.Time{}, false
+}

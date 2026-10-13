@@ -2,6 +2,16 @@
 
 Shunlly/grok2api fork of [chenyme/grok2api](https://github.com/chenyme/grok2api).
 
+## v3.2.3 — 2026-10-13
+
+### Changed
+- **移除「降智账号」面板**：质量守护页删除该标签页，后端 `GET /request-audits/degrade-accounts` 路由下线。
+- **彻底停用按速度（Token/s）的降智判定**：网关不再在请求结束时计算 burst/soft/hard 分类（原仅观测日志 `quality_fast_output_observed` 也一并移除）。
+- 保留 `missing_thinking`/`quality_degraded` 检测与定时考题（6 小时、仅观测）。
+
+### Added
+- **账号列表质量提示**：仅当账号近 7 天有真实 `quality_degraded` 命中或定时考题未通过时，在名称旁显示小警告图标，悬停可见次数、最近时间（本地时区）与原因；无命中不显示。新接口 `GET /api/admin/v1/quality/account-flags`。
+
 ## v3.2.2 — 2026-10-13
 
 ### Fixed

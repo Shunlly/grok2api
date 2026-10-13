@@ -1,7 +1,8 @@
-import { Bot, Compass, Handshake, SquareTerminal, VenusAndMars, Webhook, type LucideIcon } from "lucide-react";
+import { AlertTriangle, Bot, Compass, Handshake, SquareTerminal, VenusAndMars, Webhook, type LucideIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import type { AccountQualityFlagDTO } from "@/features/quality-guard/quality-guard-api";
 import type { AccountDTO, AccountProvider, LinkedAccountDTO } from "@/features/accounts/accounts-api";
 import { cn } from "@/shared/lib/cn";
 import { formatDateTime } from "@/shared/lib/format";
@@ -37,7 +38,7 @@ function accountLinks(account: AccountDTO): LinkedAccountDTO[] {
   return [...links].sort((left, right) => providerOrder[left.provider] - providerOrder[right.provider] || left.id.localeCompare(right.id));
 }
 
-export function AccountNameCell({ account }: { account: AccountDTO }) {
+export function AccountNameCell({ account, qualityFlag }: { account: AccountDTO; qualityFlag?: AccountQualityFlagDTO }) {
   const { t, i18n } = useTranslation();
   const links = accountLinks(account);
   const providerLabel = (provider: AccountProvider) => provider === "grok_build"
@@ -59,6 +60,22 @@ export function AccountNameCell({ account }: { account: AccountDTO }) {
           </TooltipTrigger>
           <TooltipContent>{account.name}</TooltipContent>
         </Tooltip>
+        {qualityFlag && (qualityFlag.degradedHits > 0 || qualityFlag.canaryFailures > 0) ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span tabIndex={0} aria-label={t("accounts.qualityFlagLabel")} className="inline-flex shrink-0 cursor-help items-center text-amber-600 dark:text-amber-400">
+                <AlertTriangle className="size-3.5" />
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>
+              <div className="space-y-0.5 text-xs">
+                {qualityFlag.degradedHits > 0 ? <div>{t("accounts.qualityFlagDegraded", { count: qualityFlag.degradedHits, time: qualityFlag.lastDegradedAt ? formatDateTime(qualityFlag.lastDegradedAt, i18n.language) : "-" })}</div> : null}
+                {qualityFlag.canaryFailures > 0 ? <div>{t("accounts.qualityFlagCanary", { count: qualityFlag.canaryFailures, time: qualityFlag.lastCanaryFailAt ? formatDateTime(qualityFlag.lastCanaryFailAt, i18n.language) : "-", reason: qualityFlag.lastCanaryReason || qualityFlag.lastCanaryStatus || "-" })}</div> : null}
+                <div className="text-muted-foreground">{t("accounts.qualityFlagHint")}</div>
+              </div>
+            </TooltipContent>
+          </Tooltip>
+        ) : null}
       </div>
       <div className="flex min-h-4 w-fit min-w-0 items-center">
         <Tooltip>
