@@ -74,7 +74,7 @@ func responsesContextOverflow(model string, body []byte) (string, bool) {
 	}
 	window := 0
 	if profile, ok := modeldomain.UpstreamProfile(model); ok {
-		window = profile.ContextWindow
+		window = profile.MaxContextWindow()
 	}
 	if capability, known := grokCapabilities[model]; known && capability.contextWindow > window {
 		window = capability.contextWindow

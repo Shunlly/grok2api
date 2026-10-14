@@ -807,24 +807,27 @@ type buildModelCatalogEntry struct {
 	ModelID string `json:"modelId"`
 	Hidden  bool   `json:"hidden"`
 	Meta    struct {
-		Model   string `json:"model"`
-		ModelID string `json:"modelId"`
-		Hidden  bool   `json:"hidden"`
+		Model          string  `json:"model"`
+		ModelID        string  `json:"modelId"`
+		Hidden         bool    `json:"hidden"`
+		ContextWindows []int64 `json:"contextWindows"`
 	} `json:"_meta"`
 	// Reasoning and budget metadata, mirroring the keys grok-build reads in
 	// xai-grok-shell remote/client.rs parse_remote_model_value. Snake and camel
 	// case spellings are both accepted there, so both are accepted here.
-	ContextWindow            int64  `json:"context_window"`
-	ContextWindowCamel       int64  `json:"contextWindow"`
-	MaxCompletionTokens      int64  `json:"max_completion_tokens"`
-	MaxCompletionTokensCamel int64  `json:"maxCompletionTokens"`
-	ReasoningEffort          string `json:"reasoning_effort"`
-	ReasoningEffortCamel     string `json:"reasoningEffort"`
-	SupportsReasoningEffort  *bool  `json:"supports_reasoning_effort"`
-	SupportsReasoningCamel   *bool  `json:"supportsReasoningEffort"`
-	SupportsBackendSearch    bool   `json:"supports_backend_search"`
-	AutoCompactPercent       int64  `json:"auto_compact_threshold_percent"`
-	AutoCompactPercentCamel  int64  `json:"autoCompactThresholdPercent"`
+	ContextWindow            int64   `json:"context_window"`
+	ContextWindowCamel       int64   `json:"contextWindow"`
+	ContextWindowsCamel      []int64 `json:"contextWindows"`
+	ContextWindowsSnake      []int64 `json:"context_windows"`
+	MaxCompletionTokens      int64   `json:"max_completion_tokens"`
+	MaxCompletionTokensCamel int64   `json:"maxCompletionTokens"`
+	ReasoningEffort          string  `json:"reasoning_effort"`
+	ReasoningEffortCamel     string  `json:"reasoningEffort"`
+	SupportsReasoningEffort  *bool   `json:"supports_reasoning_effort"`
+	SupportsReasoningCamel   *bool   `json:"supportsReasoningEffort"`
+	SupportsBackendSearch    bool    `json:"supports_backend_search"`
+	AutoCompactPercent       int64   `json:"auto_compact_threshold_percent"`
+	AutoCompactPercentCamel  int64   `json:"autoCompactThresholdPercent"`
 	// reasoning_efforts entries are either bare strings ("high") or objects
 	// {value,id,label,description,default}; decode lazily per entry.
 	ReasoningEfforts      []json.RawMessage `json:"reasoning_efforts"`
@@ -893,6 +896,22 @@ func (e buildModelCatalogEntry) upstreamProfile() modeldomain.UpstreamModelProfi
 	if contextWindow <= 0 {
 		contextWindow = e.ContextWindowCamel
 	}
+	listedWindows := e.ContextWindowsCamel
+	if len(listedWindows) == 0 {
+		listedWindows = e.ContextWindowsSnake
+	}
+	if len(listedWindows) == 0 {
+		listedWindows = e.Meta.ContextWindows
+	}
+	contextWindows := make([]int, 0, len(listedWindows))
+	for _, window := range listedWindows {
+		if window > 0 {
+			contextWindows = append(contextWindows, clampInt(window))
+		}
+	}
+	if contextWindow <= 0 && len(contextWindows) > 0 {
+		contextWindow = int64(contextWindows[0])
+	}
 	maxCompletion := e.MaxCompletionTokens
 	if maxCompletion <= 0 {
 		maxCompletion = e.MaxCompletionTokensCamel
@@ -902,6 +921,7 @@ func (e buildModelCatalogEntry) upstreamProfile() modeldomain.UpstreamModelProfi
 		DefaultReasoningEffort:      firstNonEmpty(menuDefault, e.ReasoningEffort, e.ReasoningEffortCamel),
 		SupportsReasoningEffort:     supports,
 		ContextWindow:               clampInt(contextWindow),
+		ContextWindows:              contextWindows,
 		MaxCompletionTokens:         clampInt(maxCompletion),
 		SupportsBackendSearch:       e.SupportsBackendSearch,
 		AutoCompactThresholdPercent: clampInt(firstPositiveInt64(e.AutoCompactPercent, e.AutoCompactPercentCamel)),
