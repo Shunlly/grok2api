@@ -23,6 +23,10 @@ type UpstreamModelProfile struct {
 	SupportsReasoningEffort bool
 	// ContextWindow mirrors `context_window` (tokens); zero when absent.
 	ContextWindow int
+	// ContextWindows mirrors the selectable sizes grok-build reads from
+	// `contextWindows` / `context_windows` / `_meta.contextWindows` (e.g.
+	// [256000, 500000]); ContextWindow is only the default selection.
+	ContextWindows []int
 	// MaxCompletionTokens mirrors `max_completion_tokens`; zero when absent.
 	MaxCompletionTokens int
 	// SupportsBackendSearch mirrors `supports_backend_search`.
@@ -65,6 +69,13 @@ func NormalizeUpstreamProfile(profile UpstreamModelProfile) UpstreamModelProfile
 	if profile.ContextWindow < 0 {
 		profile.ContextWindow = 0
 	}
+	windows := make([]int, 0, len(profile.ContextWindows))
+	for _, window := range profile.ContextWindows {
+		if window > 0 {
+			windows = append(windows, window)
+		}
+	}
+	profile.ContextWindows = windows
 	if profile.MaxCompletionTokens < 0 {
 		profile.MaxCompletionTokens = 0
 	}
@@ -101,6 +112,7 @@ func UpstreamProfile(upstreamModel string) (UpstreamModelProfile, bool) {
 		return UpstreamModelProfile{}, false
 	}
 	profile.ReasoningEfforts = append([]string(nil), profile.ReasoningEfforts...)
+	profile.ContextWindows = append([]int(nil), profile.ContextWindows...)
 	return profile, true
 }
 
@@ -122,4 +134,18 @@ func ResetUpstreamProfiles() {
 	upstreamProfilesMu.Lock()
 	upstreamProfiles = map[string]UpstreamModelProfile{}
 	upstreamProfilesMu.Unlock()
+}
+
+// MaxContextWindow is the largest window the catalog lets a client select:
+// the default `context_window` or any listed `contextWindows` size. The window
+// selection is a client-side budget in grok-build (no request field carries
+// it), so the gateway advertises the largest selectable size.
+func (p UpstreamModelProfile) MaxContextWindow() int {
+	window := p.ContextWindow
+	for _, candidate := range p.ContextWindows {
+		if candidate > window {
+			window = candidate
+		}
+	}
+	return window
 }

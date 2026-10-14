@@ -1514,3 +1514,22 @@ func TestCatalogEntryReasoningMenuAcceptsBareAndObjectEntries(t *testing.T) {
 		t.Fatalf("profile = %#v", profile)
 	}
 }
+
+func TestBuildCatalogEntryParsesSelectableContextWindows(t *testing.T) {
+	cases := map[string]string{
+		"camel": `{"id":"m","context_window":256000,"contextWindows":[256000,500000]}`,
+		"snake": `{"id":"m","context_window":256000,"context_windows":[256000,500000]}`,
+		"meta":  `{"id":"m","context_window":256000,"_meta":{"contextWindows":[256000,500000]}}`,
+		"list":  `{"id":"m","contextWindows":[256000,500000]}`,
+	}
+	for name, raw := range cases {
+		var entry buildModelCatalogEntry
+		if err := json.Unmarshal([]byte(raw), &entry); err != nil {
+			t.Fatal(err)
+		}
+		profile := entry.upstreamProfile()
+		if profile.ContextWindow != 256000 || profile.MaxContextWindow() != 500000 {
+			t.Fatalf("%s: %#v", name, profile)
+		}
+	}
+}

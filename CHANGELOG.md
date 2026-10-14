@@ -2,6 +2,12 @@
 
 Shunlly/grok2api fork of [chenyme/grok2api](https://github.com/chenyme/grok2api).
 
+## v3.3.2 — 2026-10-14
+
+### Fixed
+- Build 模型上下文按上游目录的可选窗口取最大值：解析 `contextWindows` / `context_windows` / `_meta.contextWindows`（如 `[256000, 500000]`），`context_window` 只是默认选项。Codex 模型列表与上下文预检改用最大可选窗口，grok-4.5/4.6/4.7/4.7-build-fast 恢复为 500k，自动压缩阈值仍封顶 300k。
+- 内置表补上 `grok-4.7-build-fast`（500k），未同步目录时不再回落到 128k。
+
 ## v3.3.1 — 2026-10-14
 
 ### Fixed
