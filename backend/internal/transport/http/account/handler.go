@@ -134,6 +134,7 @@ func (p *accountSyncPipeline) reportProgress() {
 func (h *Handler) Register(router *gin.RouterGroup) {
 	router.GET("/accounts", h.list)
 	router.GET("/accounts/summary", h.summary)
+	router.GET("/accounts/context-windows", h.contextWindows)
 	router.GET("/accounts/export", h.exportCredentials)
 	router.POST("/accounts/export", h.exportSelectedCredentials)
 	router.GET("/accounts/:id", h.get)
@@ -179,6 +180,7 @@ type updateRequest struct {
 	Priority               *int                          `json:"priority"`
 	MaxConcurrent          *int                          `json:"maxConcurrent"`
 	MinimumRemaining       *float64                      `json:"minimumRemaining"`
+	ContextWindow          *int                          `json:"contextWindow"`
 	CloudflareCookies      *string                       `json:"cloudflareCookies"`
 	ClearCloudflareCookies bool                          `json:"clearCloudflareCookies"`
 	BuildSuperEntitled     *bool                         `json:"buildSuperEntitled"`
@@ -307,6 +309,7 @@ type accountResponse struct {
 	Priority                 int        `json:"priority"`
 	MaxConcurrent            int        `json:"maxConcurrent"`
 	MinimumRemaining         float64    `json:"minimumRemaining"`
+	ContextWindow            int        `json:"contextWindow"`
 	FailureCount             int        `json:"failureCount"`
 	CooldownUntil            *time.Time `json:"cooldownUntil,omitempty"`
 	LastError                string     `json:"lastError,omitempty"`
@@ -1279,7 +1282,7 @@ func (h *Handler) update(c *gin.Context) {
 	}
 	value, err := h.service.Update(c.Request.Context(), id, accountapp.UpdateInput{
 		Name: request.Name, Enabled: request.Enabled, Priority: request.Priority,
-		MaxConcurrent: request.MaxConcurrent, MinimumRemaining: request.MinimumRemaining,
+		MaxConcurrent: request.MaxConcurrent, MinimumRemaining: request.MinimumRemaining, ContextWindow: request.ContextWindow,
 		CloudflareCookies: request.CloudflareCookies, ClearCloudflareCookies: request.ClearCloudflareCookies,
 		BuildSuperEntitled: request.BuildSuperEntitled, BuildRouteMode: request.BuildRouteMode,
 	})
@@ -1562,7 +1565,7 @@ func newAccountResponse(value accountapp.View) accountResponse {
 		Enabled: c.Enabled, AuthStatus: string(c.AuthStatus), Refreshable: c.EncryptedRefreshToken != "",
 		RefreshDueAt: c.RefreshDueAt, LastRefreshAt: c.LastRefreshAt,
 		RefreshFailures: c.RefreshFailureCount, LastRefreshErrorStatus: c.LastRefreshErrorStatus, LastRefreshError: c.LastRefreshErrorCode, LastRefreshErrorMessage: c.LastRefreshErrorMessage, LastRefreshErrorResponse: c.LastRefreshErrorResponse,
-		Priority: c.Priority, MaxConcurrent: c.MaxConcurrent, MinimumRemaining: c.MinimumRemaining,
+		Priority: c.Priority, MaxConcurrent: c.MaxConcurrent, MinimumRemaining: c.MinimumRemaining, ContextWindow: c.ContextWindow,
 		FailureCount: c.FailureCount, CooldownUntil: c.CooldownUntil, LastError: c.LastError,
 		DisabledSource: string(accountdomain.EffectiveDisabledSource(c.Enabled, c.DisabledSource)), DisabledReason: c.DisabledReason,
 		ReauthKind: string(c.ReauthKind), RecoveryAttempts: c.RecoveryAttempts, RecoveryNextCheckAt: c.RecoveryNextCheckAt,

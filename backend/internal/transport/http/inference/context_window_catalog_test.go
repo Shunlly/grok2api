@@ -39,3 +39,23 @@ func TestBuildFastStaticFallbackIs500k(t *testing.T) {
 		t.Fatalf("fallback = %d", capability.contextWindow)
 	}
 }
+
+func TestCodexCatalogAppliesAccountContextWindowCap(t *testing.T) {
+	modeldomain.ResetUpstreamProfiles()
+	t.Cleanup(modeldomain.ResetUpstreamProfiles)
+	t.Cleanup(func() { modeldomain.SetBuildContextWindowCap(0) })
+	modeldomain.RegisterUpstreamModelProfile("grok-4.7", modeldomain.UpstreamModelProfile{
+		ContextWindow: 256000, ContextWindows: []int{256000, 500000}, AutoCompactThresholdPercent: 80,
+	})
+	items := []modelListItem{{ID: "grok-4.7", Provider: account.ProviderBuild, Capability: modeldomain.CapabilityResponses}}
+	modeldomain.SetBuildContextWindowCap(256000)
+	m := newCodexModelCatalog(items).Models[0]
+	if m.ContextWindow != 256000 || *m.AutoCompactTokenLimit != 204800 {
+		t.Fatalf("capped window=%d compact=%d", m.ContextWindow, *m.AutoCompactTokenLimit)
+	}
+	modeldomain.SetBuildContextWindowCap(0)
+	m = newCodexModelCatalog(items).Models[0]
+	if m.ContextWindow != 500000 || *m.AutoCompactTokenLimit != 300000 {
+		t.Fatalf("auto window=%d compact=%d", m.ContextWindow, *m.AutoCompactTokenLimit)
+	}
+}

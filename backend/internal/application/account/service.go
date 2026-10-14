@@ -203,11 +203,13 @@ type View struct {
 }
 
 type UpdateInput struct {
-	Name                   *string
-	Enabled                *bool
-	Priority               *int
-	MaxConcurrent          *int
-	MinimumRemaining       *float64
+	Name             *string
+	Enabled          *bool
+	Priority         *int
+	MaxConcurrent    *int
+	MinimumRemaining *float64
+	// ContextWindow sets the Build account context window (0 = auto).
+	ContextWindow          *int
 	CloudflareCookies      *string
 	ClearCloudflareCookies bool
 	// BuildSuperEntitled 仅 grok_build 可设置；非 Build 返回业务错误。
@@ -2262,6 +2264,15 @@ func (s *Service) Update(ctx context.Context, id uint64, input UpdateInput) (Vie
 		}
 		value.MinimumRemaining = *input.MinimumRemaining
 	}
+	if input.ContextWindow != nil {
+		if value.Provider != accountdomain.ProviderBuild {
+			return View{}, invalidInput("仅 Grok Build 账号支持设置上下文窗口")
+		}
+		if *input.ContextWindow != 0 && (*input.ContextWindow < 1000 || *input.ContextWindow > 10_000_000) {
+			return View{}, invalidInput("上下文窗口必须为 0（自动）或 1000 到 10000000 之间")
+		}
+		value.ContextWindow = *input.ContextWindow
+	}
 	if input.ClearCloudflareCookies {
 		value.EncryptedCloudflareCookie = ""
 	} else if input.CloudflareCookies != nil {
@@ -2306,6 +2317,9 @@ func (s *Service) Update(ctx context.Context, id uint64, input UpdateInput) (Vie
 		_ = s.sticky.DeleteByAccount(ctx, updated.ID)
 	} else if updated.Enabled && s.providers != nil && s.providers.SupportsCredentialRefresh(updated.Provider) {
 		s.WakeCredentialRefresh()
+	}
+	if updated.Provider == accountdomain.ProviderBuild {
+		s.RefreshContextWindowCap(ctx)
 	}
 	view, err := s.Get(ctx, updated.ID)
 	if err != nil {

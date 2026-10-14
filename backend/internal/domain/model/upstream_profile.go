@@ -149,3 +149,82 @@ func (p UpstreamModelProfile) MaxContextWindow() int {
 	}
 	return window
 }
+
+// buildContextWindowCap is the largest context window the enabled Build
+// accounts allow (admin per-account setting). 0 means at least one account is
+// on auto, so the catalog maximum applies.
+var buildContextWindowCap struct {
+	sync.RWMutex
+	value int
+}
+
+// SetBuildContextWindowCap publishes the effective Build window cap (0 = no cap).
+func SetBuildContextWindowCap(value int) {
+	buildContextWindowCap.Lock()
+	buildContextWindowCap.value = max(value, 0)
+	buildContextWindowCap.Unlock()
+}
+
+// BuildContextWindowCap returns the published cap (0 = auto / uncapped).
+func BuildContextWindowCap() int {
+	buildContextWindowCap.RLock()
+	defer buildContextWindowCap.RUnlock()
+	return buildContextWindowCap.value
+}
+
+// ResolveContextWindowCap folds per-account settings (0 = auto) into one cap:
+// any auto account (or no accounts) means uncapped, otherwise the largest setting.
+func ResolveContextWindowCap(settings []int) int {
+	if len(settings) == 0 {
+		return 0
+	}
+	result := 0
+	for _, setting := range settings {
+		if setting <= 0 {
+			return 0
+		}
+		result = max(result, setting)
+	}
+	return result
+}
+
+// SelectableContextWindows lists the distinct windows a client may choose, ascending.
+func (p UpstreamModelProfile) SelectableContextWindows() []int {
+	seen := map[int]struct{}{}
+	result := make([]int, 0, len(p.ContextWindows)+1)
+	for _, window := range append([]int{p.ContextWindow}, p.ContextWindows...) {
+		if window <= 0 {
+			continue
+		}
+		if _, ok := seen[window]; ok {
+			continue
+		}
+		seen[window] = struct{}{}
+		result = append(result, window)
+	}
+	sort.Ints(result)
+	return result
+}
+
+// ApplyContextWindowCap returns window limited by capValue (0 = no cap),
+// preferring the largest catalog-selectable size that fits.
+func (p UpstreamModelProfile) ApplyContextWindowCap(window, capValue int) int {
+	if capValue <= 0 || window <= capValue {
+		return window
+	}
+	best := 0
+	for _, candidate := range p.SelectableContextWindows() {
+		if candidate <= capValue {
+			best = candidate
+		}
+	}
+	if best > 0 {
+		return best
+	}
+	return capValue
+}
+
+// EffectiveContextWindow is the catalog maximum limited by the Build account cap.
+func (p UpstreamModelProfile) EffectiveContextWindow() int {
+	return p.ApplyContextWindowCap(p.MaxContextWindow(), BuildContextWindowCap())
+}

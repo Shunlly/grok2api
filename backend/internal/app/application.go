@@ -651,6 +651,10 @@ func (a *Application) Run(ctx context.Context) error {
 		a.accounts.RunCredentialRefresh(taskCtx)
 		return nil
 	})
+	startBackground("account_context_window_cap", func(taskCtx context.Context) error {
+		a.accounts.RunContextWindowCapRefresh(taskCtx)
+		return nil
+	})
 	startBackground("account_recovery", func(taskCtx context.Context) error {
 		a.accounts.RunAccountRecovery(taskCtx)
 		return nil

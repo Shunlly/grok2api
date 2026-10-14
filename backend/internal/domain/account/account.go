@@ -238,14 +238,16 @@ type Credential struct {
 	Priority            int
 	MaxConcurrent       int
 	MinimumRemaining    float64
-	FailureCount        int
-	CooldownUntil       *time.Time
-	LastError           string
-	LastUsedAt          *time.Time
-	ObservedModel       string
-	ObservedModelAt     *time.Time
-	WebTier             WebTier
-	WebTierSyncedAt     *time.Time
+	// ContextWindow is the admin-selected Build context window (tokens); 0 = auto (largest the catalog offers).
+	ContextWindow   int
+	FailureCount    int
+	CooldownUntil   *time.Time
+	LastError       string
+	LastUsedAt      *time.Time
+	ObservedModel   string
+	ObservedModelAt *time.Time
+	WebTier         WebTier
+	WebTierSyncedAt *time.Time
 	// EgressIdentity 是不含凭据和个人信息的稳定出口身份。
 	// 关联到同一 Web 账号的 Build/Console 只共享该值，不共享任何运行状态。
 	EgressIdentity string

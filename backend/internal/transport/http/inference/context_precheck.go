@@ -73,11 +73,17 @@ func responsesContextOverflow(model string, body []byte) (string, bool) {
 		return "", false
 	}
 	window := 0
-	if profile, ok := modeldomain.UpstreamProfile(model); ok {
+	profile, hasProfile := modeldomain.UpstreamProfile(model)
+	if hasProfile {
 		window = profile.MaxContextWindow()
 	}
 	if capability, known := grokCapabilities[model]; known && capability.contextWindow > window {
 		window = capability.contextWindow
+	}
+	// The admin per-account Build window (folded across enabled accounts)
+	// limits catalog-synced Build models only.
+	if hasProfile {
+		window = profile.ApplyContextWindowCap(window, modeldomain.BuildContextWindowCap())
 	}
 	if window <= 0 {
 		return "", false
