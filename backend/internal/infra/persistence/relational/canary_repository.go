@@ -81,6 +81,9 @@ func (r *CanaryRepository) CountRounds(ctx context.Context) (int64, error) {
 
 // DeleteBefore prunes old history.
 func (r *CanaryRepository) DeleteBefore(ctx context.Context, cutoff time.Time) error {
+	if err := r.db.db.WithContext(ctx).Where("created_at < ?", cutoff).Delete(&canaryProbeArtifactModel{}).Error; err != nil {
+		return err
+	}
 	return r.db.db.WithContext(ctx).Where("created_at < ?", cutoff).Delete(&canaryProbeModel{}).Error
 }
 
@@ -150,4 +153,60 @@ func parseDBTime(value string) (time.Time, bool) {
 		}
 	}
 	return time.Time{}, false
+}
+
+type canaryProbeArtifactModel struct {
+	ResultID           uint64    `gorm:"primaryKey;autoIncrement:false"`
+	Prompt             string    `gorm:"type:text;not null"`
+	Expected           string    `gorm:"size:64;not null;default:''"`
+	Response           string    `gorm:"type:text;not null"`
+	ResponseTruncated  bool      `gorm:"not null;default:false"`
+	Reasoning          string    `gorm:"type:text;not null"`
+	ReasoningTruncated bool      `gorm:"not null;default:false"`
+	ReasoningChars     int64     `gorm:"not null;default:0"`
+	InputTokens        int64     `gorm:"not null;default:0"`
+	OutputTokens       int64     `gorm:"not null;default:0"`
+	ReasoningTokens    int64     `gorm:"not null;default:0"`
+	TotalTokens        int64     `gorm:"not null;default:0"`
+	ResponseModel      string    `gorm:"size:128;not null;default:''"`
+	ReasoningEffort    string    `gorm:"size:16;not null;default:''"`
+	MaxOutputTokens    int       `gorm:"not null;default:0"`
+	FirstTokenMS       int64     `gorm:"not null;default:0"`
+	DurationMS         int64     `gorm:"not null;default:0"`
+	CheckDetail        string    `gorm:"size:1024;not null;default:''"`
+	CreatedAt          time.Time `gorm:"not null;index:idx_canary_artifact_created"`
+}
+
+func (canaryProbeArtifactModel) TableName() string { return "canary_probe_artifacts" }
+
+// CreateArtifact stores the probe output (prompt, answer, reasoning, usage).
+func (r *CanaryRepository) CreateArtifact(ctx context.Context, value canary.Artifact) error {
+	row := canaryProbeArtifactModel(value)
+	if row.CreatedAt.IsZero() {
+		row.CreatedAt = time.Now().UTC()
+	}
+	return r.db.db.WithContext(ctx).Create(&row).Error
+}
+
+// GetResult returns one probe result and its artifact (nil when not recorded).
+func (r *CanaryRepository) GetResult(ctx context.Context, id uint64) (canary.Result, *canary.Artifact, error) {
+	var row canaryProbeModel
+	if err := r.db.db.WithContext(ctx).First(&row, id).Error; err != nil {
+		return canary.Result{}, nil, err
+	}
+	var artifact canaryProbeArtifactModel
+	err := r.db.db.WithContext(ctx).Where("result_id = ?", id).Limit(1).Find(&artifact).Error
+	if err != nil {
+		return canary.Result(row), nil, err
+	}
+	if artifact.ResultID == 0 {
+		return canary.Result(row), nil, nil
+	}
+	value := canary.Artifact(artifact)
+	return canary.Result(row), &value, nil
+}
+
+// DeleteArtifactsBefore prunes stored artifacts (audit retention).
+func (r *CanaryRepository) DeleteArtifactsBefore(ctx context.Context, cutoff time.Time) error {
+	return r.db.db.WithContext(ctx).Where("created_at < ?", cutoff).Delete(&canaryProbeArtifactModel{}).Error
 }

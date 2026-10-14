@@ -29,6 +29,8 @@ type Config struct {
 	MaxOutputTokens int
 	ProbeTimeout    time.Duration
 	Retention       time.Duration
+	// ArtifactRetention keeps prompt/answer/reasoning artifacts (aligned with audit retention).
+	ArtifactRetention time.Duration
 }
 
 type Prober interface {
@@ -44,6 +46,13 @@ type Store interface {
 	ListRecent(context.Context, uint64, int) ([]canary.Result, error)
 	CountRounds(context.Context) (int64, error)
 	DeleteBefore(context.Context, time.Time) error
+}
+
+// ArtifactStore is the optional artifact persistence (prompt, answer, reasoning).
+type ArtifactStore interface {
+	CreateArtifact(context.Context, canary.Artifact) error
+	GetResult(context.Context, uint64) (canary.Result, *canary.Artifact, error)
+	DeleteArtifactsBefore(context.Context, time.Time) error
 }
 
 var ErrRoundRunning = errors.New("金丝雀探测轮次正在运行")
@@ -81,6 +90,9 @@ func NewService(cfg Config, clientKeyID uint64, prober Prober, accounts Accounts
 	}
 	if cfg.Retention <= 0 {
 		cfg.Retention = 30 * 24 * time.Hour
+	}
+	if cfg.ArtifactRetention <= 0 || cfg.ArtifactRetention > cfg.Retention {
+		cfg.ArtifactRetention = min(7*24*time.Hour, cfg.Retention)
 	}
 	if logger == nil {
 		logger = slog.Default()
@@ -179,6 +191,7 @@ func (s *Service) ProbeAccount(ctx context.Context, accountID uint64, accountNam
 	})
 	cancel()
 	result.RequestID = out.RequestID
+	artifact := s.newArtifact(prompt, out)
 	if probeErr != nil {
 		result.Status = canary.StatusError
 		result.Error = truncate(probeErr.Error(), 500)
@@ -192,6 +205,7 @@ func (s *Service) ProbeAccount(ctx context.Context, accountID uint64, accountNam
 	if err != nil {
 		return result, err
 	}
+	s.saveArtifact(ctx, stored, artifact, probeErr)
 	s.logger.Info("canary_recovery_probe_result", "account_id", accountID, "status", stored.Status, "score", stored.Score, "reasons", stored.Reasons, "error", stored.Error)
 	return stored, probeErr
 }
@@ -226,6 +240,8 @@ func (s *Service) runRoundLocked(ctx context.Context, roundID, trigger string) (
 	now := time.Now().UTC()
 	results := make([]canary.Result, len(accounts))
 	texts := make([]string, len(accounts))
+	artifacts := make([]canary.Artifact, len(accounts))
+	errs := make([]error, len(accounts))
 	skipped := modeldomain.HidesReasoningStreamForProvider(accountdomain.ProviderBuild, s.cfg.Model)
 	var wg sync.WaitGroup
 	for index, credential := range accounts {
@@ -249,6 +265,8 @@ func (s *Service) runRoundLocked(ctx context.Context, roundID, trigger string) (
 			})
 			value := &results[index]
 			value.RequestID = out.RequestID
+			artifacts[index] = s.newArtifact(prompt, out)
+			errs[index] = err
 			if err != nil {
 				value.Status = canary.StatusError
 				value.Error = truncate(err.Error(), 500)
@@ -291,12 +309,20 @@ func (s *Service) runRoundLocked(ctx context.Context, roundID, trigger string) (
 			return nil, err
 		}
 		*value = stored
+		if value.Status != canary.StatusSkipped {
+			s.saveArtifact(ctx, stored, artifacts[index], errs[index])
+		}
 		s.logger.Info("canary_probe_result", "round_id", roundID, "account_id", value.AccountID, "prompt", value.PromptID,
 			"status", value.Status, "score", value.Score, "reasoning_tokens", value.ReasoningTokens, "consecutive_fails", value.ConsecutiveFails,
 			"suspect", value.Suspect, "observe_only", true, "reasons", value.Reasons, "error", value.Error)
 	}
 	if err := s.store.DeleteBefore(ctx, now.Add(-s.cfg.Retention)); err != nil {
 		s.logger.Warn("canary_prune_failed", "error", err)
+	}
+	if store, ok := s.store.(ArtifactStore); ok {
+		if err := store.DeleteArtifactsBefore(ctx, now.Add(-s.cfg.ArtifactRetention)); err != nil {
+			s.logger.Warn("canary_artifact_prune_failed", "error", err)
+		}
 	}
 	return results, nil
 }
@@ -404,4 +430,58 @@ func (s *Service) AccountFlags(ctx context.Context, window time.Duration) ([]can
 		return []canary.AccountFlag{}, nil
 	}
 	return store.AccountQualityFlags(ctx, time.Now().UTC().Add(-window))
+}
+
+func (s *Service) newArtifact(prompt canary.Prompt, out gatewayapp.CanaryProbeOutput) canary.Artifact {
+	response, responseCut := canary.TruncateBytes(out.Text, canary.MaxArtifactResponseBytes)
+	reasoning, reasoningCut := canary.TruncateBytes(out.ReasoningText, canary.MaxArtifactReasoningBytes)
+	return canary.Artifact{
+		Prompt: prompt.Text, Expected: prompt.Expected, Response: response, ResponseTruncated: responseCut,
+		Reasoning: reasoning, ReasoningTruncated: reasoningCut || int64(len([]rune(reasoning))) < out.ReasoningChars, ReasoningChars: out.ReasoningChars,
+		InputTokens: out.InputTokens, OutputTokens: out.OutputTokens, ReasoningTokens: out.ReasoningTokens, TotalTokens: out.TotalTokens,
+		ResponseModel: out.ResponseModel, ReasoningEffort: s.cfg.ReasoningEffort, MaxOutputTokens: s.cfg.MaxOutputTokens,
+		FirstTokenMS: out.FirstTokenMS, DurationMS: out.DurationMS,
+	}
+}
+
+func (s *Service) saveArtifact(ctx context.Context, result canary.Result, artifact canary.Artifact, probeErr error) {
+	store, ok := s.store.(ArtifactStore)
+	if !ok || result.ID == 0 {
+		return
+	}
+	artifact.ResultID = result.ID
+	artifact.CreatedAt = result.CreatedAt
+	if probeErr == nil {
+		artifact.CheckDetail = truncate(canary.ExplainCheck(canary.PromptByID(result.PromptID), artifact.Response), 1000)
+	} else {
+		artifact.CheckDetail = truncate("探测失败: "+probeErr.Error(), 1000)
+	}
+	if err := store.CreateArtifact(ctx, artifact); err != nil {
+		s.logger.Warn("canary_artifact_save_failed", "result_id", result.ID, "error", err)
+	}
+}
+
+// ErrResultNotFound is returned when a probe result id does not exist.
+var ErrResultNotFound = errors.New("金丝雀探测结果不存在")
+
+// ResultDetail is one probe with its artifact (nil for results recorded before artifacts existed).
+type ResultDetail struct {
+	Result   canary.Result    `json:"result"`
+	Artifact *canary.Artifact `json:"artifact"`
+}
+
+// ResultDetail loads one probe result with its stored artifact.
+func (s *Service) ResultDetail(ctx context.Context, id uint64) (ResultDetail, error) {
+	store, ok := s.store.(ArtifactStore)
+	if !ok {
+		return ResultDetail{}, ErrResultNotFound
+	}
+	result, artifact, err := store.GetResult(ctx, id)
+	if err != nil {
+		if result.ID == 0 {
+			return ResultDetail{}, ErrResultNotFound
+		}
+		return ResultDetail{}, err
+	}
+	return ResultDetail{Result: result, Artifact: artifact}, nil
 }

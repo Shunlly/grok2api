@@ -55,6 +55,7 @@ var schemaModels = []any{
 	&mediaUploadTicketModel{},
 	&runtimeSettingsModel{},
 	&canaryProbeModel{},
+	&canaryProbeArtifactModel{},
 }
 
 var schemaIndexes = []string{

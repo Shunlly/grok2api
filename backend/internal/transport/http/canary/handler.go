@@ -22,6 +22,7 @@ func (h *Handler) Register(router *gin.RouterGroup) {
 	}
 	router.GET("/quality/canary", h.summary)
 	router.POST("/quality/canary/run", h.run)
+	router.GET("/quality/canary/results/:id", h.resultDetail)
 	router.GET("/quality/account-flags", h.accountFlags)
 }
 
@@ -57,4 +58,24 @@ func (h *Handler) accountFlags(c *gin.Context) {
 		return
 	}
 	response.Success(c, http.StatusOK, gin.H{"flags": flags})
+}
+
+// resultDetail returns one probe with its stored artifact (prompt, answer,
+// reasoning, usage, check detail). artifact is null for older results.
+func (h *Handler) resultDetail(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil || id == 0 {
+		response.Error(c, http.StatusBadRequest, "invalidRequest", "无效的结果 ID")
+		return
+	}
+	value, err := h.service.ResultDetail(c.Request.Context(), id)
+	if errors.Is(err, canaryapp.ErrResultNotFound) {
+		response.Error(c, http.StatusNotFound, "canary_result_not_found", err.Error())
+		return
+	}
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, "canary_result_failed", err.Error())
+		return
+	}
+	response.Success(c, http.StatusOK, value)
 }

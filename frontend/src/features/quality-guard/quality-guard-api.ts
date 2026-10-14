@@ -347,6 +347,24 @@ export function getCanarySummary(): Promise<CanarySummaryDTO> {
   return apiRequest("/api/admin/v1/quality/canary?history=12", {}, decodeCanarySummary);
 }
 
+export interface CanaryArtifactDTO {
+  resultId: number; prompt: string; expected?: string; response: string; responseTruncated: boolean;
+  reasoning: string; reasoningTruncated: boolean; reasoningChars: number;
+  inputTokens: number; outputTokens: number; reasoningTokens: number; totalTokens: number;
+  responseModel: string; reasoningEffort: string; maxOutputTokens: number; firstTokenMs: number; durationMs: number;
+  checkDetail: string; createdAt: string;
+}
+export interface CanaryResultDetailDTO { result: CanaryResultDTO; artifact: CanaryArtifactDTO | null }
+
+const decodeCanaryResultDetail = createObjectDecoder<CanaryResultDetailDTO>("canary result detail", {
+  result: isCanaryResult,
+  artifact: (value: unknown) => value === null || value === undefined || hasShape({ resultId: isNumber, prompt: isString, response: isString, reasoning: isString, checkDetail: isString })(value),
+});
+
+export function getCanaryResultDetail(id: number): Promise<CanaryResultDetailDTO> {
+  return apiRequest(`/api/admin/v1/quality/canary/results/${id}`, {}, decodeCanaryResultDetail);
+}
+
 export function runCanaryRound(): Promise<{ roundId: string }> {
   return apiRequest("/api/admin/v1/quality/canary/run", { method: "POST" }, createObjectDecoder("canary run", { roundId: isString }));
 }
