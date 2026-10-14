@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FlaskConical, Play } from "lucide-react";
+import { ChevronDown, ChevronRight, FlaskConical, Play } from "lucide-react";
+import { Fragment, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
@@ -7,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getCanarySummary, runCanaryRound, type CanaryResultDTO } from "@/features/quality-guard/quality-guard-api";
+import { CanaryResultDetail } from "@/features/quality-guard/canary-result-detail";
 import { EmptyState, ErrorState } from "@/shared/components/data-state";
 import { ApiError } from "@/shared/api/client";
 import { cn } from "@/shared/lib/cn";
@@ -15,6 +17,7 @@ import { formatCompactDateTime } from "@/shared/lib/format";
 export function CanaryPanel() {
   const { t, i18n } = useTranslation();
   const queryClient = useQueryClient();
+  const [expanded, setExpanded] = useState<{ accountId: number; resultId: number } | null>(null);
   const query = useQuery({ queryKey: ["quality-canary"], queryFn: getCanarySummary, refetchInterval: (q) => (q.state.data?.running ? 5_000 : 30_000) });
   const run = useMutation({
     mutationFn: runCanaryRound,
@@ -61,8 +64,9 @@ export function CanaryPanel() {
             </TableHeader>
             <TableBody>
               {data.accounts.map((account) => (
-                <TableRow key={account.accountId}>
-                  <TableCell className="text-xs"><span className="font-medium">{account.accountName || `#${account.accountId}`}</span><span className="ml-1 text-muted-foreground">#{account.accountId}</span></TableCell>
+                <Fragment key={account.accountId}>
+                <TableRow className="cursor-pointer" onClick={() => setExpanded((value) => value?.accountId === account.accountId ? null : { accountId: account.accountId, resultId: account.latest.id })}>
+                  <TableCell className="text-xs">{expanded?.accountId === account.accountId ? <ChevronDown className="mr-1 inline size-3" /> : <ChevronRight className="mr-1 inline size-3" />}<span className="font-medium">{account.accountName || `#${account.accountId}`}</span><span className="ml-1 text-muted-foreground">#{account.accountId}</span></TableCell>
                   <TableCell><div className="flex items-center gap-1"><StatusBadge value={account.latest} />{account.latest.suspect ? <Badge variant="outline" className="text-destructive">{t("qualityGuard.canary.suspect")}</Badge> : null}</div><div className="mt-1 text-[11px] text-muted-foreground">{when(account.latest.createdAt)}</div></TableCell>
                   <TableCell className="font-mono text-xs">{account.latest.promptId}</TableCell>
                   <TableCell className="text-right font-mono text-xs tabular-nums">{account.latest.status === "pass" || account.latest.status === "fail" ? account.latest.score : "-"}</TableCell>
@@ -71,9 +75,15 @@ export function CanaryPanel() {
                   <TableCell className="text-right font-mono text-xs tabular-nums">{account.latest.durationMs ? `${(account.latest.durationMs / 1000).toFixed(1)}s` : "-"}</TableCell>
                   <TableCell className={cn("text-right font-mono text-xs tabular-nums", account.latest.consecutiveFails >= data.suspectAfter && "text-destructive")}>{account.latest.consecutiveFails}</TableCell>
                   <TableCell className="text-right font-mono text-xs tabular-nums">{Math.round(account.passRate * 100)}%</TableCell>
-                  <TableCell><div className="flex gap-0.5">{account.history.slice().reverse().map((item) => <span key={item.id} title={`${when(item.createdAt)} ${item.promptId} ${item.status} ${item.score}`} className={cn("inline-block size-2.5 rounded-sm", item.status === "pass" ? "bg-emerald-500" : item.status === "fail" ? "bg-destructive" : "bg-muted-foreground/40")} />)}</div></TableCell>
+                  <TableCell><div className="flex gap-0.5">{account.history.slice().reverse().map((item) => <button type="button" key={item.id} aria-label={`${when(item.createdAt)} ${item.promptId} ${item.status}`} title={`${when(item.createdAt)} ${item.promptId} ${item.status} ${item.score}`} onClick={(event) => { event.stopPropagation(); setExpanded({ accountId: account.accountId, resultId: item.id }); }} className={cn("inline-block size-2.5 rounded-sm", expanded?.resultId === item.id && "ring-2 ring-ring ring-offset-1", item.status === "pass" ? "bg-emerald-500" : item.status === "fail" ? "bg-destructive" : "bg-muted-foreground/40")} />)}</div></TableCell>
                   <TableCell className="max-w-72 truncate text-xs text-muted-foreground" title={account.latest.error || account.latest.reasons}>{account.latest.error || account.latest.reasons || "-"}</TableCell>
                 </TableRow>
+                {expanded?.accountId === account.accountId ? (
+                  <TableRow className="hover:bg-transparent">
+                    <TableCell colSpan={11} className="bg-muted/20 p-4"><CanaryResultDetail resultId={expanded.resultId} /></TableCell>
+                  </TableRow>
+                ) : null}
+                </Fragment>
               ))}
             </TableBody>
           </Table>

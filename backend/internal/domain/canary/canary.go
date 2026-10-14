@@ -236,3 +236,83 @@ type AccountFlag struct {
 	LastCanaryStatus string     `json:"lastCanaryStatus,omitempty"`
 	LastCanaryReason string     `json:"lastCanaryReason,omitempty"`
 }
+
+// Artifact is the stored output of one probe, kept for admin inspection.
+type Artifact struct {
+	ResultID           uint64    `json:"resultId"`
+	Prompt             string    `json:"prompt"`
+	Expected           string    `json:"expected,omitempty"`
+	Response           string    `json:"response"`
+	ResponseTruncated  bool      `json:"responseTruncated"`
+	Reasoning          string    `json:"reasoning"`
+	ReasoningTruncated bool      `json:"reasoningTruncated"`
+	ReasoningChars     int64     `json:"reasoningChars"`
+	InputTokens        int64     `json:"inputTokens"`
+	OutputTokens       int64     `json:"outputTokens"`
+	ReasoningTokens    int64     `json:"reasoningTokens"`
+	TotalTokens        int64     `json:"totalTokens"`
+	ResponseModel      string    `json:"responseModel"`
+	ReasoningEffort    string    `json:"reasoningEffort"`
+	MaxOutputTokens    int       `json:"maxOutputTokens"`
+	FirstTokenMS       int64     `json:"firstTokenMs"`
+	DurationMS         int64     `json:"durationMs"`
+	CheckDetail        string    `json:"checkDetail"`
+	CreatedAt          time.Time `json:"createdAt"`
+}
+
+const (
+	// MaxArtifactResponseBytes caps the stored visible answer.
+	MaxArtifactResponseBytes = 200 << 10
+	// MaxArtifactReasoningBytes caps the stored reasoning text.
+	MaxArtifactReasoningBytes = 64 << 10
+)
+
+// TruncateBytes cuts value to at most limit bytes on a rune boundary.
+func TruncateBytes(value string, limit int) (string, bool) {
+	if len(value) <= limit {
+		return value, false
+	}
+	cut := limit
+	for cut > 0 && !utf8RuneStart(value[cut]) {
+		cut--
+	}
+	return value[:cut], true
+}
+
+func utf8RuneStart(b byte) bool { return b&0xC0 != 0x80 }
+
+// ExplainCheck describes what the checker saw, for the admin detail view.
+func ExplainCheck(prompt Prompt, text string) string {
+	switch prompt.Kind {
+	case KindReasoning:
+		matches := finalAnswerPattern.FindAllStringSubmatch(text, -1)
+		if len(matches) == 0 {
+			return "期望 Final answer: " + prompt.Expected + "；回复中未找到 Final answer 行"
+		}
+		got := strings.ReplaceAll(matches[len(matches)-1][1], ",", "")
+		return "期望 " + prompt.Expected + "，回复 Final answer: " + got
+	case KindSVG:
+		lower := strings.ToLower(text)
+		found := []string{}
+		for _, item := range []struct{ name, marker string }{{"svg", "<svg"}, {"circle", "<circle"}, {"rect", "<rect"}, {"polygon", "<polygon"}, {"path", "<path"}, {"animateTransform", "animatetransform"}, {"@keyframes", "@keyframes"}, {"animate", "<animate"}} {
+			if strings.Contains(lower, item.marker) {
+				found = append(found, item.name)
+			}
+		}
+		if len(found) == 0 {
+			return "未检测到任何 SVG 元素"
+		}
+		return "检测到: " + strings.Join(found, ", ")
+	}
+	return ""
+}
+
+// PromptByID returns the prompt with the given id (zero Prompt when unknown).
+func PromptByID(id string) Prompt {
+	for _, prompt := range Prompts {
+		if prompt.ID == id {
+			return prompt
+		}
+	}
+	return Prompt{}
+}

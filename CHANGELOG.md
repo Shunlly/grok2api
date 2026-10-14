@@ -2,6 +2,13 @@
 
 Shunlly/grok2api fork of [chenyme/grok2api](https://github.com/chenyme/grok2api).
 
+## v3.3.4 — 2026-10-14
+
+### Added
+- 金丝雀探测保存产物：新表 `canary_probe_artifacts` 记录题目、模型回答（上限 200KB）、思考文本（上限 64KB）、输入/输出/思考/合计 token、响应模型、首字与总耗时、检查明细（期望答案与实际答案 / 检测到的 SVG 元素）。产物保留期与审计日志一致（`audit.retentionDays`），结果本身仍按 `canary.retentionDays` 保留。
+- 管理接口 `GET /api/admin/v1/quality/canary/results/:id` 返回单条结果及产物（旧结果 `artifact` 为 null）。
+- 面板：点击账号行展开最新结果，点击历史小方块查看对应那次；显示题目、回答、思考过程、用量、耗时和判定原因。SVG/HTML 回答在空 sandbox 的 iframe 中渲染（禁用脚本、外部资源由 CSP 阻止，并剥离 script/事件属性），可切换原文。旧结果显示“没有记录产物”。
+
 ## v3.3.3 — 2026-10-14
 
 ### Added

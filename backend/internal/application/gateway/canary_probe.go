@@ -34,9 +34,16 @@ type CanaryProbeOutput struct {
 	OutputTokens    int64
 	ReasoningTokens int64
 	ReasoningChars  int64
+	ReasoningText   string
+	InputTokens     int64
+	TotalTokens     int64
+	ResponseModel   string
 	FirstTokenMS    int64
 	DurationMS      int64
 }
+
+// canaryMaxReasoningCapture bounds the reasoning text kept for the artifact.
+const canaryMaxReasoningCapture = 128 << 10
 
 // ErrCanaryTransport marks failures that must not count against an account.
 var ErrCanaryTransport = errors.New("canary transport error")
@@ -96,6 +103,7 @@ func (s *Service) ProbeAccountCanary(ctx context.Context, input CanaryProbeInput
 	var firstAt time.Time
 	var visible strings.Builder
 	var reasoningChars int64
+	var reasoningText strings.Builder
 	terminal := false
 	total := 0
 	scanner := bufio.NewScanner(result.Body)
@@ -148,6 +156,9 @@ func (s *Service) ProbeAccountCanary(ctx context.Context, input CanaryProbeInput
 				}
 			}
 			reasoningChars += int64(utf8.RuneCountInString(delta.Reasoning + delta.ReasoningContent + delta.ThinkingContent))
+			if reasoningText.Len() < canaryMaxReasoningCapture {
+				reasoningText.WriteString(delta.Reasoning + delta.ReasoningContent + delta.ThinkingContent)
+			}
 			visible.WriteString(delta.Content)
 		}
 	}
@@ -161,7 +172,8 @@ func (s *Service) ProbeAccountCanary(ctx context.Context, input CanaryProbeInput
 	}
 	out := CanaryProbeOutput{
 		RequestID: requestID, Text: visible.String(), OutputTokens: usage.OutputTokens,
-		ReasoningTokens: usage.ReasoningTokens, ReasoningChars: reasoningChars,
+		ReasoningTokens: usage.ReasoningTokens, ReasoningChars: reasoningChars, ReasoningText: reasoningText.String(),
+		InputTokens: usage.InputTokens, TotalTokens: usage.TotalTokens, ResponseModel: usage.ResponseModel,
 		DurationMS: time.Since(startedAt).Milliseconds(),
 	}
 	out.VisibleChars = int64(utf8.RuneCountInString(out.Text))
