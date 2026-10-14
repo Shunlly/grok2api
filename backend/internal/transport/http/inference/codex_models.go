@@ -120,7 +120,9 @@ func lookupGrokCapability(providerValue account.Provider, slug string) (grokMode
 	// table once an account has synchronized it, exactly like grok-build.
 	if providerValue == account.ProviderBuild {
 		if profile, exists := modeldomain.UpstreamProfile(slug); exists && profile.MaxContextWindow() > 0 {
-			capability.contextWindow = profile.MaxContextWindow()
+			capability.contextWindow = profile.EffectiveContextWindow()
+		} else {
+			capability.contextWindow = modeldomain.UpstreamModelProfile{}.ApplyContextWindowCap(capability.contextWindow, modeldomain.BuildContextWindowCap())
 		}
 
 	}

@@ -99,6 +99,7 @@ export type AccountDTO = {
   priority: number;
   maxConcurrent: number;
   minimumRemaining: number;
+  contextWindow?: number;
   failureCount: number;
   cooldownUntil?: string;
   lastError?: string;
@@ -136,6 +137,7 @@ export type AccountUpdateInput = {
   priority: number;
   maxConcurrent: number;
   minimumRemaining: number;
+  contextWindow?: number;
   cloudflareCookies?: string;
   clearCloudflareCookies?: boolean;
   buildSuperEntitled?: boolean;
@@ -200,7 +202,7 @@ const accountValidator = hasShape({
   enabled: isBoolean, authStatus: isOneOf("active", "reauthRequired"), expiresAt: isOptional(isString), refreshable: isBoolean, cloudflareCookieConfigured: isBoolean,
   buildSuperEntitled: isBoolean, buildRouteMode: isOneOf("auto", "build", "xai"), buildBotFlagged: isBoolean, buildBotFlagSource: isOptional(isNumber), modelSyncFailed: isOptional(isBoolean), refreshDueAt: isOptional(isString), lastRefreshAt: isOptional(isString), refreshFailureCount: isNumber,
   egressNodeId: isOptional(isString), egressAssignmentMode: isOptional(isOneOf("manual", "auto")),
-  lastRefreshErrorStatus: isOptional(isNumber), lastRefreshErrorCode: isOptional(isString), lastRefreshErrorMessage: isOptional(isString), lastRefreshErrorResponse: isOptional(isString), priority: isNumber, maxConcurrent: isNumber, minimumRemaining: isNumber,
+  lastRefreshErrorStatus: isOptional(isNumber), lastRefreshErrorCode: isOptional(isString), lastRefreshErrorMessage: isOptional(isString), lastRefreshErrorResponse: isOptional(isString), priority: isNumber, maxConcurrent: isNumber, minimumRemaining: isNumber, contextWindow: isOptional(isNumber),
   failureCount: isNumber, cooldownUntil: isOptional(isString), lastError: isOptional(isString), lastUsedAt: isOptional(isString),
   enabledDoesNotClearCooldown: isOptional(isBoolean),
   disabledSource: isOptional(isOneOf("admin", "auto_quality", "auto_auth")), disabledReason: isOptional(isString),
@@ -264,6 +266,21 @@ export function listAccounts(input: ListAccountsInput): Promise<PaginatedDTO<Acc
 
 export function getAccountSummary(): Promise<AccountSummaryDTO> {
   return apiRequest("/api/admin/v1/accounts/summary", {}, decodeAccountSummary);
+}
+
+export type ContextWindowCatalogDTO = {
+  models: Array<{ model: string; contextWindow: number; contextWindows: number[]; selectableContextWindows: number[]; maxContextWindow: number; effectiveContextWindow: number; autoCompactThresholdPercent: number; maxCompletionTokens: number }>;
+  options: number[];
+  cap: number;
+};
+
+const decodeContextWindowCatalog = createObjectDecoder<ContextWindowCatalogDTO>("context window catalog", {
+  models: isArrayOf(hasShape({ model: isString, contextWindow: isNumber, contextWindows: isArrayOf(isNumber), selectableContextWindows: isArrayOf(isNumber), maxContextWindow: isNumber, effectiveContextWindow: isNumber, autoCompactThresholdPercent: isNumber, maxCompletionTokens: isNumber })),
+  options: isArrayOf(isNumber), cap: isNumber,
+});
+
+export function getContextWindowCatalog(): Promise<ContextWindowCatalogDTO> {
+  return apiRequest("/api/admin/v1/accounts/context-windows", {}, decodeContextWindowCatalog);
 }
 
 export function updateAccount(id: string, input: AccountUpdateInput): Promise<AccountDTO> {

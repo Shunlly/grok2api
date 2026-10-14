@@ -88,6 +88,7 @@ import {
   type WebAccountScriptsInput,
   type DeviceSessionDTO,
   type QuotaDTO,
+  getContextWindowCatalog,
 } from "@/features/accounts/accounts-api";
 import { AccountQuota, ConsoleQuota, WebQuota } from "@/features/accounts/account-quota";
 import { AccountNameCell } from "@/features/accounts/account-name-cell";
@@ -114,6 +115,10 @@ type AccountSelection = {
   provider: AccountProvider;
   ids: Set<string>;
 };
+
+function formatContextWindow(window: number): string {
+  return window % 1000 === 0 ? `${window / 1000}k` : String(window);
+}
 
 export function AccountsPage() {
   const { t, i18n } = useTranslation();
@@ -216,6 +221,7 @@ export function AccountsPage() {
     priority: z.number().int(),
     maxConcurrent: z.number().int().min(1, t("errors.positive")).max(256),
     minimumRemaining: z.number().min(0),
+    contextWindow: z.number().int().min(0),
     cloudflareCookies: z.string().max(16 << 10, t("settings.invalidValue")),
     clearCloudflareCookies: z.boolean(),
     buildSuperEntitled: z.boolean(),
@@ -225,7 +231,7 @@ export function AccountsPage() {
   const form = useForm<AccountForm>({
     resolver: zodResolver(accountSchema),
     defaultValues: {
-      name: "", enabled: true, priority: 1, maxConcurrent: 8, minimumRemaining: 0,
+      name: "", enabled: true, priority: 1, maxConcurrent: 8, minimumRemaining: 0, contextWindow: 0,
       cloudflareCookies: "", clearCloudflareCookies: false, buildSuperEntitled: false, buildRouteMode: "auto",
     },
   });
@@ -233,6 +239,14 @@ export function AccountsPage() {
   const clearCloudflareCookies = useWatch({ control: form.control, name: "clearCloudflareCookies" });
   const buildSuperEntitled = useWatch({ control: form.control, name: "buildSuperEntitled" });
   const buildRouteMode = useWatch({ control: form.control, name: "buildRouteMode" });
+  const contextWindowValue = useWatch({ control: form.control, name: "contextWindow" });
+  const contextWindowCatalogQuery = useQuery({
+    queryKey: ["accounts", "context-windows"],
+    queryFn: getContextWindowCatalog,
+    enabled: editing?.provider === "grok_build",
+    staleTime: 60_000,
+  });
+  const contextWindowOptions = Array.from(new Set([...(contextWindowCatalogQuery.data?.options ?? []), ...(contextWindowValue ? [contextWindowValue] : [])])).sort((a, b) => a - b);
   const selected = selection.provider === provider ? selection.ids : new Set<string>();
   const selectedIdsKey = Array.from(selected).sort().join(",");
 
@@ -345,6 +359,7 @@ export function AccountsPage() {
         else if (values.cloudflareCookies.trim()) input.cloudflareCookies = values.cloudflareCookies;
       } else {
         input.buildRouteMode = values.buildRouteMode;
+        if (values.contextWindow !== (editing.contextWindow ?? 0)) input.contextWindow = values.contextWindow;
         if (values.buildSuperEntitled !== editing.buildSuperEntitled) input.buildSuperEntitled = values.buildSuperEntitled;
       }
       return updateAccount(editing.id, input);
@@ -1135,6 +1150,7 @@ export function AccountsPage() {
       priority: account.priority,
       maxConcurrent: account.maxConcurrent,
       minimumRemaining: account.minimumRemaining,
+      contextWindow: account.contextWindow ?? 0,
       cloudflareCookies: "",
       clearCloudflareCookies: false,
       buildSuperEntitled: account.buildSuperEntitled,
@@ -1883,6 +1899,19 @@ export function AccountsPage() {
             <div className="space-y-2"><Label htmlFor="account-minimum">{t("accounts.minimumRemaining")}</Label><Input id="account-minimum" type="number" min="0" step="0.01" {...form.register("minimumRemaining", { valueAsNumber: true })} /></div>
             {editing?.provider === "grok_build" ? (
               <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="account-context-window">{t("accounts.contextWindow.label")}</Label>
+                  <Select value={String(contextWindowValue ?? 0)} onValueChange={(value) => form.setValue("contextWindow", Number(value), { shouldDirty: true })}>
+                    <SelectTrigger id="account-context-window"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="0">{t("accounts.contextWindow.auto")}</SelectItem>
+                      {contextWindowOptions.map((window) => (
+                        <SelectItem key={window} value={String(window)}>{formatContextWindow(window)}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">{t("accounts.contextWindow.description")}</p>
+                </div>
                 <div className="flex items-start justify-between gap-4 rounded-md bg-muted/50 p-3">
                   <div className="space-y-1">
                     <Label htmlFor="account-build-super-entitled">{t("accounts.buildSuperEntitled.label")}</Label>

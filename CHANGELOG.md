@@ -2,6 +2,16 @@
 
 Shunlly/grok2api fork of [chenyme/grok2api](https://github.com/chenyme/grok2api).
 
+## v3.3.3 — 2026-10-14
+
+### Added
+- Build 账号编辑弹窗新增「上下文窗口」设置：选项来自上游目录的可选大小（如 256k / 500k），默认「自动」取最大。按账号存储（`provider_accounts.context_window`，0 = 自动，现有账号默认自动）。
+- `/v1/models` 不区分账号，因此 Codex 目录与上下文预检按所有启用 Build 账号中最大的设置生效；任一账号为自动则不限制。自动压缩阈值按生效窗口计算，仍封顶 300k。
+- 只读管理接口 `GET /api/admin/v1/accounts/context-windows`：返回缓存的上游目录上下文字段（`context_window`、`contextWindows`、可选大小、生效值、自动压缩百分比）。
+
+### Fixed
+- v3.3.2 的上下文窗口测试文件名以 `_windows_test.go` 结尾，被 Go 当作仅 Windows 构建而未执行；已改名，测试现在会实际运行。
+
 ## v3.3.2 — 2026-10-14
 
 ### Fixed

@@ -66,12 +66,14 @@ type accountModel struct {
 	RecoveryAttempts    int    `gorm:"not null;default:0"`
 	RecoveryNextCheckAt *time.Time
 	RecoveryLastCheckAt *time.Time
-	RecoveryLastError   string                  `gorm:"size:512;not null;default:''"`
-	CreatedAt           time.Time               `gorm:"not null"`
-	UpdatedAt           time.Time               `gorm:"not null"`
-	Credential          *accountCredentialModel `gorm:"foreignKey:AccountID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
-	WebProfile          *webAccountProfileModel `gorm:"foreignKey:AccountID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
-	EgressNode          *egressNodeModel        `gorm:"foreignKey:EgressNodeID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:SET NULL"`
+	RecoveryLastError   string `gorm:"size:512;not null;default:''"`
+	// ContextWindow is the admin-selected Build context window; 0 means auto (largest selectable).
+	ContextWindow int                     `gorm:"not null;default:0"`
+	CreatedAt     time.Time               `gorm:"not null"`
+	UpdatedAt     time.Time               `gorm:"not null"`
+	Credential    *accountCredentialModel `gorm:"foreignKey:AccountID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+	WebProfile    *webAccountProfileModel `gorm:"foreignKey:AccountID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+	EgressNode    *egressNodeModel        `gorm:"foreignKey:EgressNodeID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:SET NULL"`
 }
 
 func (accountModel) TableName() string { return "provider_accounts" }
