@@ -211,7 +211,8 @@ func TestRecoveryProbeBlockedErrorIsPermanent(t *testing.T) {
 }
 
 func TestRecoveryMaxAgeGivesUp(t *testing.T) {
-	now := time.Date(2026, 10, 14, 0, 0, 0, 0, time.UTC)
+	// The repository stamps reauth_marked_at with the wall clock, so anchor to it.
+	now := time.Now().UTC()
 	service, repo, probed := newRecoveryTestService(t, now)
 	ctx := context.Background()
 	value := recoveryAccount(t, repo, "old")

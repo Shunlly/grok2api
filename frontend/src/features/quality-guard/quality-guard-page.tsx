@@ -190,6 +190,9 @@ export function QualityGuardPage() {
   if (statusQuery.isError && !statusQuery.data) return <ErrorState message={statusQuery.error.message} onRetry={refresh} />;
 
   const status = statusQuery.data;
+  // Probe profiles belong to the egress quality-guard sidecar; hide them while it is disabled.
+  const profilesTabVisible = status?.available === true;
+  const visibleTab: QualityGuardTab = !profilesTabVisible && activeTab === "profiles" ? "nodes" : activeTab;
   const nodes = nodesQuery.data?.items ?? [];
   const protectedNodeIDs = new Set(status?.protectedNodeIds ?? []);
   const selectableNodes = nodes.filter((node) => !protectedNodeIDs.has(node.id));
@@ -228,18 +231,18 @@ export function QualityGuardPage() {
         )}
       />
 
-      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as QualityGuardTab)}>
+      <Tabs value={visibleTab} onValueChange={(value) => setActiveTab(value as QualityGuardTab)}>
         <TabsList>
           <TabsTrigger value="nodes">{t("qualityGuard.nodesTab")}</TabsTrigger>
-          <TabsTrigger value="profiles">{t("qualityGuard.profilesTab")}</TabsTrigger>
+          {profilesTabVisible && <TabsTrigger value="profiles">{t("qualityGuard.profilesTab")}</TabsTrigger>}
           <TabsTrigger value="canary">{t("qualityGuard.canary.tab")}</TabsTrigger>
         </TabsList>
         <TabsContent value="canary" className="mt-6">
           <CanaryPanel />
         </TabsContent>
-        <TabsContent value="profiles" className="mt-6">
+        {profilesTabVisible && <TabsContent value="profiles" className="mt-6">
           <ProbeProfilesPanel />
-        </TabsContent>
+        </TabsContent>}
         <TabsContent value="nodes" className="mt-6 space-y-6">
       {!status?.available ? <UnavailableState /> : (
         <>
