@@ -69,6 +69,8 @@ type accountModel struct {
 	RecoveryLastError   string `gorm:"size:512;not null;default:''"`
 	// ContextWindow is the admin-selected Build context window; 0 means auto (largest selectable).
 	ContextWindow int                     `gorm:"not null;default:0"`
+	// AllowedModels is a JSON array of upstream model ids this account may serve; '' or '[]' = all.
+	AllowedModels string `gorm:"type:text;not null;default:''"`
 	CreatedAt     time.Time               `gorm:"not null"`
 	UpdatedAt     time.Time               `gorm:"not null"`
 	Credential    *accountCredentialModel `gorm:"foreignKey:AccountID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`

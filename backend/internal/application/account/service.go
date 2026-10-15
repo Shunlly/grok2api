@@ -213,6 +213,8 @@ type UpdateInput struct {
 	MinimumRemaining *float64
 	// ContextWindow sets the Build account context window (0 = auto).
 	ContextWindow          *int
+	// AllowedModels replaces the upstream model allowlist; nil = unchanged, empty = allow all.
+	AllowedModels          *[]string
 	CloudflareCookies      *string
 	ClearCloudflareCookies bool
 	// BuildSuperEntitled 仅 grok_build 可设置；非 Build 返回业务错误。
@@ -2281,6 +2283,25 @@ func (s *Service) Update(ctx context.Context, id uint64, input UpdateInput) (Vie
 			return View{}, invalidInput("上下文窗口必须为 0（自动）或 1000 到 10000000 之间")
 		}
 		value.ContextWindow = *input.ContextWindow
+	}
+	if input.AllowedModels != nil {
+		allowed := make([]string, 0, len(*input.AllowedModels))
+		seen := map[string]bool{}
+		for _, model := range *input.AllowedModels {
+			model = strings.TrimSpace(model)
+			if model == "" || seen[model] {
+				continue
+			}
+			if len(model) > 128 {
+				return View{}, invalidInput("allowedModels 中的模型 ID 过长")
+			}
+			seen[model] = true
+			allowed = append(allowed, model)
+		}
+		if len(allowed) > 256 {
+			return View{}, invalidInput("allowedModels 最多 256 项")
+		}
+		value.AllowedModels = allowed
 	}
 	if input.ClearCloudflareCookies {
 		value.EncryptedCloudflareCookie = ""

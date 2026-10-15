@@ -155,6 +155,8 @@ func buildAccountModels(account accountResponse, snapshot repository.AccountMode
 			item.Reason = "notSupported"
 		case route.HasBindings && !route.Bound:
 			item.Reason = "notBound"
+		case !allowsModel(account.AllowedModels, route.UpstreamModel):
+			item.Reason = "notAllowed"
 		default:
 			if block, blocked := blocks[route.UpstreamModel]; blocked {
 				until := block.CooldownUntil
@@ -192,4 +194,15 @@ func upstreamContextWindow(account accountResponse, model string) int {
 		return account.ContextWindow
 	}
 	return profile.EffectiveContextWindow()
+}
+
+func allowedModelsOrEmpty(values []string) []string {
+	if values == nil {
+		return []string{}
+	}
+	return values
+}
+
+func allowsModel(allowed []string, upstreamModel string) bool {
+	return accountdomain.Credential{AllowedModels: allowed}.AllowsModel(upstreamModel)
 }

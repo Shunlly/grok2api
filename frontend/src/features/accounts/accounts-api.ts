@@ -100,6 +100,7 @@ export type AccountDTO = {
   maxConcurrent: number;
   minimumRemaining: number;
   contextWindow?: number;
+  allowedModels?: string[];
   failureCount: number;
   cooldownUntil?: string;
   lastError?: string;
@@ -163,6 +164,7 @@ export type AccountUpdateInput = {
   maxConcurrent: number;
   minimumRemaining: number;
   contextWindow?: number;
+  allowedModels?: string[];
   cloudflareCookies?: string;
   clearCloudflareCookies?: boolean;
   buildSuperEntitled?: boolean;
@@ -241,7 +243,7 @@ const accountValidator = hasShape({
   enabled: isBoolean, authStatus: isOneOf("active", "reauthRequired"), expiresAt: isOptional(isString), refreshable: isBoolean, cloudflareCookieConfigured: isBoolean,
   buildSuperEntitled: isBoolean, buildRouteMode: isOneOf("auto", "build", "xai"), buildBotFlagged: isBoolean, buildBotFlagSource: isOptional(isNumber), modelSyncFailed: isOptional(isBoolean), refreshDueAt: isOptional(isString), lastRefreshAt: isOptional(isString), refreshFailureCount: isNumber,
   egressNodeId: isOptional(isString), egressAssignmentMode: isOptional(isOneOf("manual", "auto")),
-  lastRefreshErrorStatus: isOptional(isNumber), lastRefreshErrorCode: isOptional(isString), lastRefreshErrorMessage: isOptional(isString), lastRefreshErrorResponse: isOptional(isString), priority: isNumber, maxConcurrent: isNumber, minimumRemaining: isNumber, contextWindow: isOptional(isNumber),
+  lastRefreshErrorStatus: isOptional(isNumber), lastRefreshErrorCode: isOptional(isString), lastRefreshErrorMessage: isOptional(isString), lastRefreshErrorResponse: isOptional(isString), priority: isNumber, maxConcurrent: isNumber, minimumRemaining: isNumber, contextWindow: isOptional(isNumber), allowedModels: isOptional(isArrayOf(isString)),
   failureCount: isNumber, cooldownUntil: isOptional(isString), lastError: isOptional(isString), lastUsedAt: isOptional(isString),
   enabledDoesNotClearCooldown: isOptional(isBoolean),
   disabledSource: isOptional(isOneOf("admin", "auto_quality", "auto_auth")), disabledReason: isOptional(isString),

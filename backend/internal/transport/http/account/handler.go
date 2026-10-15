@@ -263,6 +263,7 @@ type updateRequest struct {
 	MaxConcurrent          *int                          `json:"maxConcurrent"`
 	MinimumRemaining       *float64                      `json:"minimumRemaining"`
 	ContextWindow          *int                          `json:"contextWindow"`
+	AllowedModels          *[]string                     `json:"allowedModels"`
 	CloudflareCookies      *string                       `json:"cloudflareCookies"`
 	ClearCloudflareCookies bool                          `json:"clearCloudflareCookies"`
 	BuildSuperEntitled     *bool                         `json:"buildSuperEntitled"`
@@ -392,6 +393,7 @@ type accountResponse struct {
 	MaxConcurrent            int        `json:"maxConcurrent"`
 	MinimumRemaining         float64    `json:"minimumRemaining"`
 	ContextWindow            int        `json:"contextWindow"`
+	AllowedModels            []string   `json:"allowedModels"`
 	FailureCount             int        `json:"failureCount"`
 	CooldownUntil            *time.Time `json:"cooldownUntil,omitempty"`
 	LastError                string     `json:"lastError,omitempty"`
@@ -1435,7 +1437,7 @@ func (h *Handler) update(c *gin.Context) {
 	}
 	value, err := h.service.Update(c.Request.Context(), id, accountapp.UpdateInput{
 		Name: request.Name, Enabled: request.Enabled, Priority: request.Priority,
-		MaxConcurrent: request.MaxConcurrent, MinimumRemaining: request.MinimumRemaining, ContextWindow: request.ContextWindow,
+		MaxConcurrent: request.MaxConcurrent, MinimumRemaining: request.MinimumRemaining, ContextWindow: request.ContextWindow, AllowedModels: request.AllowedModels,
 		CloudflareCookies: request.CloudflareCookies, ClearCloudflareCookies: request.ClearCloudflareCookies,
 		BuildSuperEntitled: request.BuildSuperEntitled, BuildRouteMode: request.BuildRouteMode,
 	})
@@ -1718,7 +1720,7 @@ func newAccountResponse(value accountapp.View) accountResponse {
 		Enabled: c.Enabled, AuthStatus: string(c.AuthStatus), Refreshable: c.EncryptedRefreshToken != "",
 		RefreshDueAt: c.RefreshDueAt, LastRefreshAt: c.LastRefreshAt,
 		RefreshFailures: c.RefreshFailureCount, LastRefreshErrorStatus: c.LastRefreshErrorStatus, LastRefreshError: c.LastRefreshErrorCode, LastRefreshErrorMessage: c.LastRefreshErrorMessage, LastRefreshErrorResponse: c.LastRefreshErrorResponse,
-		Priority: c.Priority, MaxConcurrent: c.MaxConcurrent, MinimumRemaining: c.MinimumRemaining, ContextWindow: c.ContextWindow,
+		Priority: c.Priority, MaxConcurrent: c.MaxConcurrent, MinimumRemaining: c.MinimumRemaining, ContextWindow: c.ContextWindow, AllowedModels: allowedModelsOrEmpty(c.AllowedModels),
 		FailureCount: c.FailureCount, CooldownUntil: c.CooldownUntil, LastError: c.LastError,
 		DisabledSource: string(accountdomain.EffectiveDisabledSource(c.Enabled, c.DisabledSource)), DisabledReason: c.DisabledReason,
 		ReauthKind: string(c.ReauthKind), RecoveryAttempts: c.RecoveryAttempts, RecoveryNextCheckAt: c.RecoveryNextCheckAt,

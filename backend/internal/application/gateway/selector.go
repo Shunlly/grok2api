@@ -246,7 +246,7 @@ func (e *SelectionUnavailableError) Error() string {
 		if prefix != "" {
 			return prefix + "不支持该模型"
 		}
-		return "当前账号池不支持该模型"
+		return "当前账号池没有支持该模型的可用账号（账号不支持或未在账号模型允许列表中）"
 	case SelectionCooling:
 		if prefix != "" {
 			return prefix + "中的可用账号正在冷却"
@@ -1014,6 +1014,10 @@ func candidateEgressLeaseCooling(candidate account.RoutingCandidate, credential 
 // catalog feature, while unknown/manual Web routes and all other providers
 // retain the persisted snapshot semantics.
 func (s *Selector) candidateSupportsModel(provider account.Provider, upstreamModel, quotaMode string, candidate account.RoutingCandidate) bool {
+	// 管理员设置的账号模型允许列表优先于能力快照；空列表表示允许全部模型。
+	if !candidate.Credential.AllowsModel(upstreamModel) {
+		return false
+	}
 	if provider == account.ProviderWeb {
 		order := s.resolveTierOrder(provider, upstreamModel, quotaMode)
 		if len(order) > 0 {
