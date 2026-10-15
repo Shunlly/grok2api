@@ -988,7 +988,7 @@ func (s *Service) createResponseAt(ctx context.Context, input Input, path string
 	if slimmed, stats := slimRequestBody(input.Body, s.requestSlimmingConfig()); stats.changed() {
 		input.Body = slimmed
 		auditBase.RequestHeaders = withSlimmingAuditHeader(auditBase.RequestHeaders, stats)
-		s.logger.Info("request_slimmed", "request_id", input.RequestID, "model", publicModel, "original_bytes", stats.OriginalBytes, "slimmed_bytes", stats.SlimmedBytes, "images_removed", stats.ImagesRemoved, "outputs_trimmed", stats.OutputsTrimmed, "output_bytes_omitted", stats.BytesTrimmed)
+		s.logger.Info("request_slimmed", "request_id", input.RequestID, "model", publicModel, "original_bytes", stats.OriginalBytes, "slimmed_bytes", stats.SlimmedBytes, "media_removed", stats.mediaRemoved(), "images_removed", stats.ImagesRemoved, "videos_removed", stats.VideosRemoved, "audios_removed", stats.AudiosRemoved, "files_removed", stats.FilesRemoved, "data_uris_removed", stats.DataURIsRemoved, "outputs_trimmed", stats.OutputsTrimmed, "output_bytes_omitted", stats.BytesTrimmed)
 	}
 	if tooLarge := s.checkUpstreamRequestSize(len(input.Body)); tooLarge != nil {
 		// Fail fast before any account lease or upstream call: xAI cannot process

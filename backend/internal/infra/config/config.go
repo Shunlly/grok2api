@@ -97,9 +97,11 @@ type GatewayConfig struct {
 
 // RequestSlimmingConfig controls history slimming of generation requests.
 type RequestSlimmingConfig struct {
-	Enabled             bool `yaml:"enabled"`
-	KeepImageTurns      int  `yaml:"keepImageTurns"`
-	KeepToolOutputTurns int  `yaml:"keepToolOutputTurns"`
+	Enabled        bool `yaml:"enabled"`
+	KeepMediaTurns int  `yaml:"keepMediaTurns"`
+	// KeepImageTurns is the legacy (v3.4.10) alias of KeepMediaTurns.
+	KeepImageTurns      int `yaml:"keepImageTurns"`
+	KeepToolOutputTurns int `yaml:"keepToolOutputTurns"`
 }
 
 type FrontendConfig struct {
@@ -512,7 +514,7 @@ func (c Config) Validate() error {
 	if strings.TrimSpace(c.Server.Listen) == "" {
 		return errors.New("server.listen 不能为空")
 	}
-	if c.Gateway.RequestSlimming.KeepImageTurns < 0 || c.Gateway.RequestSlimming.KeepToolOutputTurns < 0 {
+	if c.Gateway.RequestSlimming.KeepImageTurns < 0 || c.Gateway.RequestSlimming.KeepMediaTurns < 0 || c.Gateway.RequestSlimming.KeepToolOutputTurns < 0 {
 		return fmt.Errorf("gateway.requestSlimming 轮数不能为负数")
 	}
 	if c.Gateway.MaxUpstreamRequestBytes < 0 {
@@ -961,7 +963,7 @@ func defaultConfig() Config {
 			ReadTimeout:           Duration(15 * time.Minute),
 			RequestTimeout:        Duration(2 * time.Hour),
 		},
-		Gateway:  GatewayConfig{MaxUpstreamRequestBytes: 3 << 20, RequestSlimming: RequestSlimmingConfig{Enabled: true, KeepImageTurns: 2, KeepToolOutputTurns: 2}},
+		Gateway:  GatewayConfig{MaxUpstreamRequestBytes: 3 << 20, RequestSlimming: RequestSlimmingConfig{Enabled: true, KeepToolOutputTurns: 2}},
 		Frontend: FrontendConfig{PublicAPIBaseURL: DefaultPublicAPIBaseURL, StaticPath: "./frontend/dist"},
 		Database: DatabaseConfig{
 			Driver:   "sqlite",

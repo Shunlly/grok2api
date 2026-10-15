@@ -129,3 +129,71 @@ func TestSlimChatAndAnthropic(t *testing.T) {
 		t.Fatal("recent image dropped")
 	}
 }
+
+func b64(n int) string { return strings.Repeat("Q", n) }
+
+// multimodalTurns builds a body with two old turns full of media and a latest turn with the same media.
+func TestSlimAllMediaTypesResponses(t *testing.T) {
+	media := func(tag string) []any {
+		return []any{
+			map[string]any{"type": "input_text", "text": "turn " + tag},
+			map[string]any{"type": "input_image", "image_url": fakeImage(4096)},
+			map[string]any{"type": "input_video", "video_url": "data:video/mp4;base64," + b64(4096)},
+			map[string]any{"type": "input_audio", "input_audio": map[string]any{"data": b64(4096), "format": "wav"}},
+			map[string]any{"type": "input_file", "filename": "spec-" + tag + ".pdf", "file_data": "data:application/pdf;base64," + b64(4096)},
+			map[string]any{"type": "input_file", "file_id": "file-keep-" + tag},
+			map[string]any{"type": "input_file", "file_url": "https://example.com/" + tag + ".pdf"},
+		}
+	}
+	items := []any{}
+	for _, tag := range []string{"A", "B", "C"} {
+		items = append(items,
+			map[string]any{"type": "message", "role": "user", "content": media(tag)},
+			map[string]any{"type": "function_call", "call_id": "c" + tag, "name": "shell", "arguments": "{}"},
+			map[string]any{"type": "function_call_output", "call_id": "c" + tag, "output": "screenshot data:image/png;base64," + b64(2048) + " end"},
+		)
+	}
+	body, _ := json.Marshal(map[string]any{"model": "grok-4.7", "input": items})
+	out, st := slimRequestBody(body, RequestSlimmingConfig{Enabled: true, KeepMediaTurns: 2, KeepToolOutputTurns: 2})
+	if !json.Valid(out) {
+		t.Fatal("invalid json")
+	}
+	if st.ImagesRemoved != 1 || st.VideosRemoved != 1 || st.AudiosRemoved != 1 || st.FilesRemoved != 1 || st.DataURIsRemoved != 1 {
+		t.Fatalf("stats %+v", st)
+	}
+	s := string(out)
+	for _, want := range []string{"[视频已省略", "[音频已省略", "[文件已省略: spec-A.pdf", "[内嵌数据已省略: image/png", "file-keep-A", "https://example.com/A.pdf"} {
+		if !strings.Contains(s, want) {
+			t.Fatalf("missing %q", want)
+		}
+	}
+	if strings.Contains(s, "文件已省略: spec-B") || strings.Contains(s, "文件已省略: spec-C") || strings.Count(s, "application/pdf;base64,") != 2 {
+		t.Fatal("recent turns must keep files")
+	}
+	if strings.Contains(s, "\"type\":\"text\"") {
+		t.Fatal("responses placeholder must be input_text")
+	}
+	out2, _ := slimRequestBody(body, RequestSlimmingConfig{Enabled: true, KeepImageTurns: 1, KeepToolOutputTurns: 2})
+	if !bytes.Contains(out2, []byte("spec-B.pdf / file")) || bytes.Contains(out2, []byte("spec-C.pdf / file")) {
+		t.Fatal("legacy keepImageTurns alias not honoured")
+	}
+	if again, _ := slimRequestBody(body, slimCfg); !bytes.Equal(again, out) {
+		t.Fatal("not deterministic")
+	}
+}
+
+func TestSlimAllMediaTypesChatAndAnthropic(t *testing.T) {
+	chat := []byte(`{"messages":[{"role":"user","content":[{"type":"video_url","video_url":{"url":"https://v/old.mp4"}},{"type":"input_audio","input_audio":{"data":"` + b64(2048) + `","format":"mp3"}},{"type":"file","file":{"filename":"old.pdf","file_data":"data:application/pdf;base64,` + b64(2048) + `"}},{"type":"file","file":{"file_id":"file-1"}}]},{"role":"assistant","content":"ok"},{"role":"user","content":"2"},{"role":"user","content":[{"type":"video_url","video_url":{"url":"https://v/new.mp4"}},{"type":"file","file":{"filename":"new.pdf","file_data":"data:application/pdf;base64,QQ"}}]}]}`)
+	out, st := slimRequestBody(chat, slimCfg)
+	if st.VideosRemoved != 1 || st.AudiosRemoved != 1 || st.FilesRemoved != 1 || !bytes.Contains(out, []byte("new.mp4")) || bytes.Contains(out, []byte("old.mp4")) || !bytes.Contains(out, []byte("file-1")) || !bytes.Contains(out, []byte("new.pdf\",\"file_data")) {
+		t.Fatalf("chat %+v %s", st, out)
+	}
+	if bytes.Contains(out, []byte(`"type":"input_text"`)) {
+		t.Fatal("chat placeholder must be text")
+	}
+	anth := []byte(`{"messages":[{"role":"user","content":[{"type":"document","title":"old.pdf","source":{"type":"base64","media_type":"application/pdf","data":"` + b64(2048) + `"}},{"type":"document","source":{"type":"url","url":"https://d/x.pdf"}},{"type":"video","source":{"type":"base64","media_type":"video/mp4","data":"VV"}}]},{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"x","input":{}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":[{"type":"document","source":{"type":"base64","media_type":"application/pdf","data":"PP"}}]}]},{"role":"user","content":"b"},{"role":"user","content":"c"}]}`)
+	out, st = slimRequestBody(anth, slimCfg)
+	if st.FilesRemoved != 2 || st.VideosRemoved != 1 || !bytes.Contains(out, []byte("文件已省略: old.pdf")) || !bytes.Contains(out, []byte("https://d/x.pdf")) || !bytes.Contains(out, []byte(`"tool_use_id":"t1"`)) {
+		t.Fatalf("anthropic %+v %s", st, out)
+	}
+}

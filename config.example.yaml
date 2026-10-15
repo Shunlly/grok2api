@@ -23,12 +23,14 @@ gateway:
   # 生成类请求（/v1/responses、/v1/chat/completions、/v1/messages）发往 xAI 前的请求体上限，默认 3 MiB。
   # 超过时直接返回 413 request_too_large，不调用上游、不影响账号；0 表示关闭。不能大于 server.maxBodyBytes。
   maxUpstreamRequestBytes: 3145728
-  # 请求瘦身：转发前只保留最近 keepImageTurns 轮用户对话里的图片，更早的替换为“[图片已省略]”；
+  # 请求瘦身：转发前只保留最近 keepMediaTurns 轮用户对话里的多模态内容（图片、视频、音频、内嵌文件/PDF、
+  # 任意 data:*;base64 内嵌数据，含工具输出里的），更早的替换为“[图片已省略]”“[视频已省略]”“[音频已省略]”“[文件已省略: 名称]”等；
+  # 旧配置项 keepImageTurns 仍兼容（keepMediaTurns 未设置时生效）。
   # 早于最近 keepToolOutputTurns 轮且超过 16KB 的工具输出只保留开头 6KB + 结尾 4KB。最新一轮永不改动。
   # 瘦身在 maxUpstreamRequestBytes 检查之前进行，本地会话记录不受影响。
   requestSlimming:
     enabled: true
-    keepImageTurns: 2
+    keepMediaTurns: 2
     keepToolOutputTurns: 2
 
 auth:
