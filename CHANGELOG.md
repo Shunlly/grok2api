@@ -2,6 +2,15 @@
 
 Shunlly/grok2api fork of [chenyme/grok2api](https://github.com/chenyme/grok2api).
 
+## v3.4.0 — 2026-10-15
+
+### Added
+- 账号操作菜单新增「查看模型」：弹窗分「可用模型 / 不可用 / 全部模型」三个标签。可用模型 = 该账号 Provider 下当前能路由到这个账号的公开模型；不可用列出原因（模型已停用、账号上游不支持、模型绑定了其他账号、单模型额度封锁（含解除时间）、账号禁用/凭证失效/冷却/无额度/额度待重置/检测中）。全部模型 = 上游为该账号返回并已同步的模型能力列表（Build 显示有效上下文），附对应的公开模型。支持「从上游刷新」（复用现有账号模型同步）。
+- 新接口 `GET /api/admin/v1/accounts/:id/models`、`POST /api/admin/v1/accounts/:id/models/refresh`，返回 `usable`、`unavailable`、`all`、`accountBlockers`、`capabilityKnown`、`fetchedAt`、`lastError`、`source`。
+
+### Fixed
+- 部署后旧页面加载已失效的动态模块（`Failed to fetch dynamically imported module`）时自动刷新一次（`vite:preloadError` + 路由 errorElement，sessionStorage 30 秒防循环），刷新失败显示友好提示与「刷新页面」按钮。`index.html` 继续 `Cache-Control: no-cache`，`/assets/*` 为 `public, max-age=31536000, immutable`。
+
 ## v3.3.9 — 2026-10-15
 
 ### Changed

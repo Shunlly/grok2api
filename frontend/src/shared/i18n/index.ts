@@ -4,6 +4,8 @@ import { initReactI18next } from "react-i18next";
 const resources = {
   "zh-CN": {
     translation: {
+      chunkError: { title: "页面已更新", description: "服务刚部署了新版本，当前页面引用的文件已失效。刷新后即可继续使用。", reload: "刷新页面", genericTitle: "页面出错了", genericDescription: "页面渲染时发生错误，可以刷新重试。" },
+      accountModels: { action: "查看模型", title: "{{name}} 的模型", description: "可用模型是当前能路由到这个账号的公开模型；全部模型是上游为这个账号返回的模型列表。", usableTab: "可用模型 ({{count}})", unavailableTab: "不可用 ({{count}})", allTab: "全部模型 ({{count}})", refresh: "从上游刷新", refreshed: "已从上游刷新模型列表", refreshFailed: "上游刷新失败，显示的是上次同步结果", fetchedAt: "上次同步：{{time}}", neverSynced: "尚未同步模型能力（按全部支持处理）", lastError: "上次同步错误：{{error}}", empty: "没有模型", publicId: "公开模型", upstreamModel: "上游模型", capability: "能力", contextWindow: "上下文", reason: "原因", mappedTo: "对应公开模型", unmapped: "未映射", accountBlocked: "账号整体暂不可调度：{{reasons}}", until: "至 {{time}}", reasons: { routeDisabled: "模型已停用", notSupported: "账号上游不支持", notBound: "模型绑定了其他账号", modelQuotaBlocked: "单模型额度封锁", accountDisabled: "账号已禁用", reauthRequired: "凭证失效", accountCooldown: "账号冷却中", noQuota: "无额度", quotaWaitingReset: "额度待重置", quotaProbing: "额度检测中" } },
       appName: "Grok2API",
       webAccountSettings: {
         menu: "账号设置",
@@ -1428,6 +1430,8 @@ const resources = {
   },
   en: {
     translation: {
+      chunkError: { title: "A new version is available", description: "The server was just updated and this page references files that no longer exist. Reload to continue.", reload: "Reload page", genericTitle: "Something went wrong", genericDescription: "An error occurred while rendering this page. Try reloading." },
+      accountModels: { action: "View models", title: "Models for {{name}}", description: "Usable models are public models that can currently route to this account; all models is the list the upstream returned for this account.", usableTab: "Usable ({{count}})", unavailableTab: "Unavailable ({{count}})", allTab: "All models ({{count}})", refresh: "Refresh from upstream", refreshed: "Model list refreshed from upstream", refreshFailed: "Upstream refresh failed; showing the last synced result", fetchedAt: "Last synced: {{time}}", neverSynced: "Model capabilities not synced yet (treated as supporting all)", lastError: "Last sync error: {{error}}", empty: "No models", publicId: "Public model", upstreamModel: "Upstream model", capability: "Capability", contextWindow: "Context", reason: "Reason", mappedTo: "Public models", unmapped: "Not mapped", accountBlocked: "Account is currently not schedulable: {{reasons}}", until: "until {{time}}", reasons: { routeDisabled: "Model disabled", notSupported: "Not supported upstream", notBound: "Model is bound to other accounts", modelQuotaBlocked: "Per-model quota block", accountDisabled: "Account disabled", reauthRequired: "Credential invalid", accountCooldown: "Account cooling down", noQuota: "No quota", quotaWaitingReset: "Waiting for quota reset", quotaProbing: "Checking quota" } },
       appName: "Grok2API",
       webAccountSettings: {
         menu: "Account settings",

@@ -2,9 +2,13 @@ import { Navigate, createBrowserRouter } from "react-router-dom";
 
 import { AnonymousBoundary, AuthBoundary } from "@/app/auth-boundary";
 import { DeferredAccountsPage, DeferredApiDocsPage, DeferredAppShell, DeferredClientKeysPage, DeferredCreativeConsolePage, DeferredDashboardPage, DeferredGalleryPage, DeferredModelsPage, DeferredQualityGuardPage, DeferredRequestAuditsPage, DeferredSettingsPage, DeferredVideoGalleryPage } from "@/app/deferred-pages";
+import { RouteErrorBoundary } from "@/app/route-error-boundary";
 import { LoginPage } from "@/features/auth/login-page";
 
 export const router = createBrowserRouter([
+  {
+    errorElement: <RouteErrorBoundary />,
+    children: [
   {
     element: <AnonymousBoundary />,
     children: [{ path: "/login", element: <LoginPage /> }],
@@ -15,6 +19,9 @@ export const router = createBrowserRouter([
       {
         element: <DeferredAppShell />,
         children: [
+          {
+            errorElement: <RouteErrorBoundary />,
+            children: [
           { index: true, element: <Navigate to="/dashboard" replace /> },
           { path: "/dashboard", element: <DeferredDashboardPage /> },
           { path: "/accounts", element: <DeferredAccountsPage /> },
@@ -28,9 +35,13 @@ export const router = createBrowserRouter([
           { path: "/docs", element: <Navigate to="/docs/chat/completions" replace /> },
           { path: "/docs/:category/:endpoint", element: <DeferredApiDocsPage /> },
           { path: "/settings", element: <DeferredSettingsPage /> },
+            ],
+          },
         ],
       },
     ],
   },
   { path: "*", element: <Navigate to="/dashboard" replace /> },
+    ],
+  },
 ]);
