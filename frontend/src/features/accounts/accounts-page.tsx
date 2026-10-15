@@ -1,6 +1,6 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowRight, ClipboardPaste, Compass, Download, ExternalLink, FileUp, Hourglass, Link, MoreHorizontal, Pencil, Plus, RefreshCw, RotateCw, Search, SquareTerminal, TimerOff, Trash2, TriangleAlert, Webhook } from "lucide-react";
+import { ArrowRight, Boxes, ClipboardPaste, Compass, Download, ExternalLink, FileUp, Hourglass, Link, MoreHorizontal, Pencil, Plus, RefreshCw, RotateCw, Search, SquareTerminal, TimerOff, Trash2, TriangleAlert, Webhook } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { useTranslation } from "react-i18next";
@@ -33,6 +33,7 @@ import { VirtualTableBody } from "@/shared/components/virtual-table-body";
 import { useDebouncedValue } from "@/shared/hooks/use-debounced-value";
 import { cn } from "@/shared/lib/cn";
 import { formatDateTime, formatNumber } from "@/shared/lib/format";
+import { AccountModelsDialog } from "@/features/accounts/account-models-dialog";
 import { nextTableSort, type SortOrder, type TableSort } from "@/shared/lib/table-sort";
 import {
   acceptWebAccountTerms,
@@ -536,6 +537,7 @@ export function AccountsPage() {
     onError: showError,
   });
 
+  const [modelsTarget, setModelsTarget] = useState<{ id: string; name: string } | null>(null);
   const recheckMutation = useMutation({
     mutationFn: recheckAccount,
     onSuccess: (data) => {
@@ -1578,6 +1580,7 @@ export function AccountsPage() {
                         <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="size-8" aria-label={t("common.actions")}><MoreHorizontal /></Button></DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem onClick={() => beginEdit(account)}><Pencil />{t("common.edit")}</DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setModelsTarget({ id: account.id, name: account.name || account.email || account.id })}><Boxes />{t("accountModels.action")}</DropdownMenuItem>
                           {provider === "grok_web" ? <DropdownMenuItem onClick={() => openWebConversion([account.id])}><ArrowRight />{t("accountConversion.action")}</DropdownMenuItem> : null}
                           {provider === "grok_web" ? (
                             <WebAccountSettingsMenu
@@ -1983,6 +1986,7 @@ export function AccountsPage() {
         </DialogContent>
       </Dialog>
 
+      <AccountModelsDialog target={modelsTarget} onClose={() => setModelsTarget(null)} />
       <AlertDialog open={Boolean(deleting)} onOpenChange={(open) => {
         if (!open) {
           // Do not clear linked targets while a delete request is in flight.

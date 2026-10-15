@@ -47,6 +47,7 @@ type Handler struct {
 	service *accountapp.Service
 	sync    accountSynchronizer
 	lastUse LastUseLookup
+	models  AccountModelLookup
 }
 
 // LastUseLookup 返回账号最近一次服务真实请求（排除探针/考题）的时间。
@@ -178,6 +179,8 @@ func (h *Handler) Register(router *gin.RouterGroup) {
 	router.GET("/accounts/export", h.exportCredentials)
 	router.POST("/accounts/export", h.exportSelectedCredentials)
 	router.GET("/accounts/:id", h.get)
+	router.GET("/accounts/:id/models", h.accountModels)
+	router.POST("/accounts/:id/models/refresh", h.refreshAccountModels)
 	router.DELETE("/accounts/:id/model-quota-blocks", h.clearModelQuotaBlocks)
 	router.POST("/accounts/device/start", h.startDevice)
 	router.POST("/accounts/device/:sessionId/poll", h.pollDevice)

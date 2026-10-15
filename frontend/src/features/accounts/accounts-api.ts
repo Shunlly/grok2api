@@ -763,3 +763,37 @@ export function startDeviceAuthorization(): Promise<DeviceSessionDTO> {
 export function pollDeviceAuthorization(sessionId: string, signal: AbortSignal): Promise<DevicePollDTO> {
   return apiRequest(`/api/admin/v1/accounts/device/${sessionId}/poll`, { method: "POST", signal }, decodeDevicePoll);
 }
+
+export type AccountModelItemDTO = { id: string; upstreamModel: string; capability?: string; contextWindow?: number; reason?: string; detail?: string; until?: string };
+export type AccountUpstreamModelDTO = { id: string; contextWindow?: number; publicIds: string[] };
+export type AccountModelsDTO = {
+  accountId: number;
+  provider: string;
+  usable: AccountModelItemDTO[];
+  unavailable: AccountModelItemDTO[];
+  all: AccountUpstreamModelDTO[];
+  accountBlockers: string[];
+  capabilityKnown: boolean;
+  fetchedAt?: string;
+  lastAttemptAt?: string;
+  lastError?: string;
+  source: string;
+  modelSyncFailed?: boolean;
+};
+
+const isAccountModelItem = hasShape({ id: isString, upstreamModel: isString, capability: isOptional(isString), contextWindow: isOptional(isNumber), reason: isOptional(isString), detail: isOptional(isString), until: isOptional(isString) });
+
+const decodeAccountModels = createObjectDecoder<AccountModelsDTO>("account models", {
+  accountId: isNumber, provider: isString, usable: isArrayOf(isAccountModelItem), unavailable: isArrayOf(isAccountModelItem),
+  all: isArrayOf(hasShape({ id: isString, contextWindow: isOptional(isNumber), publicIds: isArrayOf(isString) })),
+  accountBlockers: isArrayOf(isString), capabilityKnown: isBoolean, fetchedAt: isOptional(isString), lastAttemptAt: isOptional(isString),
+  lastError: isOptional(isString), source: isString, modelSyncFailed: isOptional(isBoolean),
+});
+
+export function getAccountModels(id: string): Promise<AccountModelsDTO> {
+  return apiRequest(`/api/admin/v1/accounts/${id}/models`, {}, decodeAccountModels);
+}
+
+export function refreshAccountModels(id: string): Promise<AccountModelsDTO> {
+  return apiRequest(`/api/admin/v1/accounts/${id}/models/refresh`, { method: "POST" }, decodeAccountModels);
+}

@@ -56,7 +56,9 @@ type Dependencies struct {
 	Accounts     *accountapp.Service
 	AccountSync  *accountsyncapp.Service
 	// AccountLastUse 按审计表计算账号最近真实使用时间（可为空，空时回退到账号 last_used_at）。
-	AccountLastUse         accounthttp.LastUseLookup
+	AccountLastUse accounthttp.LastUseLookup
+	// AccountModels 提供单账号模型视图（可为空）。
+	AccountModels          accounthttp.AccountModelLookup
 	Models                 *modelapp.Service
 	ClientKeys             *clientkeyapp.Service
 	Audits                 *auditapp.Service
@@ -154,7 +156,7 @@ func New(deps Dependencies) *gin.Engine {
 	adminProtected := adminRoot.Group("")
 	adminProtected.Use(middleware.AdminAuth(deps.AdminAuth))
 	authHandler.RegisterAuthenticated(adminProtected)
-	accounthttp.NewHandler(deps.Accounts, deps.AccountSync).WithLastUse(deps.AccountLastUse).Register(adminProtected)
+	accounthttp.NewHandler(deps.Accounts, deps.AccountSync).WithLastUse(deps.AccountLastUse).WithModels(deps.AccountModels).Register(adminProtected)
 	modelhttp.NewHandler(deps.Models).Register(adminProtected)
 	clientkeyhttp.NewHandler(deps.ClientKeys).Register(adminProtected)
 	auditHandler := audithttp.NewHandler(deps.Audits)
