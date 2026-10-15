@@ -289,3 +289,38 @@ func (s *Service) refreshResets(ctx context.Context) {
 		}
 	}
 }
+
+// ResetDelay is the pause after a reset boundary before the catch-up sync.
+func (s *Service) ResetDelay() time.Duration {
+	if s == nil {
+		return 0
+	}
+	return s.cfg.ResetDelay
+}
+
+// PendingResetSyncs returns, per account, when its reset catch-up sync is
+// scheduled (boundary + ResetDelay), including ones after the next hourly
+// run. Already handled or stale boundaries are omitted.
+func (s *Service) PendingResetSyncs() map[uint64]time.Time {
+	out := map[uint64]time.Time{}
+	if s == nil {
+		return out
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := s.now()
+	for id, at := range s.resets {
+		if done, ok := s.handled[id]; ok && done.Equal(at) {
+			continue
+		}
+		due := at.Add(s.cfg.ResetDelay)
+		if !due.After(now) && at.Before(now.Add(-24*time.Hour)) {
+			continue
+		}
+		if due.Before(now) {
+			due = now
+		}
+		out[id] = due
+	}
+	return out
+}

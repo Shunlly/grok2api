@@ -44,11 +44,12 @@ const (
 )
 
 type Handler struct {
-	service *accountapp.Service
-	sync    accountSynchronizer
-	lastUse LastUseLookup
-	usage   UsageStatsLookup
-	models  AccountModelLookup
+	service   *accountapp.Service
+	sync      accountSynchronizer
+	lastUse   LastUseLookup
+	usage     UsageStatsLookup
+	models    AccountModelLookup
+	quotaSync QuotaSyncSchedule
 }
 
 // LastUseLookup 返回账号最近一次服务真实请求（排除探针/考题）的时间。
@@ -452,6 +453,13 @@ type accountResponse struct {
 	PlanSubscriptionNo bool       `json:"planNoSubscription,omitempty"`
 	// UsageStats 是账号真实请求用量快照，只在额度/账单同步时刷新（列表读取不重算）。
 	UsageStats *usageStatsResponse `json:"usageStats,omitempty"`
+	// LastQuotaSyncAt: newest upstream billing/quota-window sync.
+	LastQuotaSyncAt *time.Time `json:"lastQuotaSyncAt,omitempty"`
+	// NextQuotaSyncAt = min(next hourly run, reset catch-up sync); reason: hourly|reset|autoSyncDisabled|accountDisabled|reauthRequired|unsupported.
+	NextQuotaSyncAt     *time.Time `json:"nextQuotaSyncAt,omitempty"`
+	NextQuotaSyncReason string     `json:"nextQuotaSyncReason,omitempty"`
+	// ResetQuotaSyncAt is the reset-triggered sync time even when later than the hourly run.
+	ResetQuotaSyncAt *time.Time `json:"resetQuotaSyncAt,omitempty"`
 }
 
 // usageStatsResponse：金额单位为 USD ticks（1 USD = 1e10 ticks），优先上游计费，缺失时用本地估算。
@@ -588,6 +596,7 @@ func (h *Handler) list(c *gin.Context) {
 	}
 	h.applyLastUse(c.Request.Context(), items)
 	h.applyUsageStats(c.Request.Context(), items)
+	h.applyQuotaSyncHints(items)
 	response.Success(c, http.StatusOK, gin.H{"items": items, "page": page, "pageSize": pageSize, "total": total})
 }
 
@@ -933,6 +942,7 @@ func (h *Handler) get(c *gin.Context) {
 	items := []accountResponse{newAccountResponse(value)}
 	h.applyLastUse(c.Request.Context(), items)
 	h.applyUsageStats(c.Request.Context(), items)
+	h.applyQuotaSyncHints(items)
 	response.Success(c, http.StatusOK, items[0])
 }
 

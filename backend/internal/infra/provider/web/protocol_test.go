@@ -1787,7 +1787,6 @@ func MarshalJSONBytes(value any) []byte {
 	return data
 }
 
-
 func TestImagineCollectorFiltersMismatchedRequestIDs(t *testing.T) {
 	reqID := "img_target_12345"
 	collector := newImagineCollector(reqID)
