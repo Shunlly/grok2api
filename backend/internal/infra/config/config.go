@@ -93,6 +93,23 @@ type GatewayConfig struct {
 	MaxUpstreamRequestBytes int64 `yaml:"maxUpstreamRequestBytes"`
 	// RequestSlimming drops old images and trims old huge tool outputs before forwarding.
 	RequestSlimming RequestSlimmingConfig `yaml:"requestSlimming"`
+	// AutoCompact summarizes older history (Grok Build style) when the
+	// estimated input exceeds thresholdPercent of the model context window.
+	AutoCompact AutoCompactConfig `yaml:"autoCompact"`
+}
+
+// AutoCompactConfig controls Grok Build-style gateway-side context compaction.
+type AutoCompactConfig struct {
+	Enabled          bool `yaml:"enabled"`
+	ThresholdPercent int  `yaml:"thresholdPercent"`
+	KeepRecentTurns  int  `yaml:"keepRecentTurns"`
+	// KeepRecentPercent caps the verbatim recent tail as a share of the window.
+	KeepRecentPercent  int      `yaml:"keepRecentPercent"`
+	SummaryMaxChars    int      `yaml:"summaryMaxChars"`
+	ReserveTokens      int      `yaml:"reserveTokens"`
+	CacheEntries       int      `yaml:"cacheEntries"`
+	SummaryTimeout     Duration `yaml:"summaryTimeout"`
+	FallbackContextWin int      `yaml:"fallbackContextWindow"`
 }
 
 // RequestSlimmingConfig controls history slimming of generation requests.
@@ -102,6 +119,10 @@ type RequestSlimmingConfig struct {
 	// KeepImageTurns is the legacy (v3.4.9) alias of KeepMediaTurns.
 	KeepImageTurns      int `yaml:"keepImageTurns"`
 	KeepToolOutputTurns int `yaml:"keepToolOutputTurns"`
+	// ToolOutputMaxBytes / ShellOutputMaxChars truncate every tool output (all
+	// turns) at the Grok Build source limits; 0 uses the default, -1 disables.
+	ToolOutputMaxBytes  int `yaml:"toolOutputMaxBytes"`
+	ShellOutputMaxChars int `yaml:"shellOutputMaxChars"`
 }
 
 type FrontendConfig struct {
@@ -516,6 +537,9 @@ func (c Config) Validate() error {
 	}
 	if c.Gateway.RequestSlimming.KeepImageTurns < 0 || c.Gateway.RequestSlimming.KeepMediaTurns < 0 || c.Gateway.RequestSlimming.KeepToolOutputTurns < 0 {
 		return fmt.Errorf("gateway.requestSlimming 轮数不能为负数")
+	}
+	if c.Gateway.AutoCompact.ThresholdPercent < 0 || c.Gateway.AutoCompact.ThresholdPercent > 100 {
+		return fmt.Errorf("gateway.autoCompact.thresholdPercent 必须在 0-100 之间")
 	}
 	if c.Gateway.MaxUpstreamRequestBytes < 0 {
 		return fmt.Errorf("gateway.maxUpstreamRequestBytes 不能为负数")
@@ -963,7 +987,7 @@ func defaultConfig() Config {
 			ReadTimeout:           Duration(15 * time.Minute),
 			RequestTimeout:        Duration(2 * time.Hour),
 		},
-		Gateway:  GatewayConfig{MaxUpstreamRequestBytes: 3 << 20, RequestSlimming: RequestSlimmingConfig{Enabled: true, KeepToolOutputTurns: 2}},
+		Gateway:  GatewayConfig{MaxUpstreamRequestBytes: 5 << 19, RequestSlimming: RequestSlimmingConfig{Enabled: true, KeepToolOutputTurns: 2}, AutoCompact: AutoCompactConfig{Enabled: true, ThresholdPercent: 85}},
 		Frontend: FrontendConfig{PublicAPIBaseURL: DefaultPublicAPIBaseURL, StaticPath: "./frontend/dist"},
 		Database: DatabaseConfig{
 			Driver:   "sqlite",

@@ -22,14 +22,14 @@ export function AccountUsageStats({ account, variant = "row" }: { account: Pick<
     <div className="space-y-1 text-xs">
       <div className="font-medium">{t("accounts.usageStats.tooltipPeriod", { start: stats.periodStart ? formatDateTime(stats.periodStart, i18n.language) : "-", end: stats.periodEnd ? formatDateTime(stats.periodEnd, i18n.language) : t("accounts.usageStats.periodNow"), zone: displayTimeZoneLabel() })}</div>
       <div className="text-muted-foreground">{t(`accounts.usageStats.periodSource.${periodSourceKey(stats.periodSource)}`, { mode: stats.periodSource?.split(":")[1] ?? "" })}</div>
-      <div>{t("accounts.usageStats.requests", { total: n(stats.totalRequests), failed: n(stats.totalFailedRequests) })}</div>
+      <div>{t("accounts.usageStats.requests", { total: n(stats.totalRequests), success: n(stats.totalRequests - stats.totalFailedRequests), failed: n(stats.totalFailedRequests) })}</div>
       <div>{t("accounts.usageStats.tokens", { input: n(stats.totalInputTokens), cached: n(stats.totalCachedInputTokens), output: n(stats.totalOutputTokens), reasoning: n(stats.totalReasoningTokens), total: n(stats.totalTokens) })}</div>
       <div>{t("accounts.usageStats.cost", { total: formatUsageUSD(stats.totalCostUsdTicks), upstream: formatUsageUSD(stats.totalUpstreamCostUsdTicks), estimated: formatUsageUSD(stats.totalEstimatedCostUsdTicks) })}</div>
       <div className="pt-1 font-medium">{t("accounts.usageStats.tooltipToday", { date: stats.todayDate })}</div>
       {todayCurrent ? (
         <>
           {todayFromReset ? <div className="text-muted-foreground">{t("accounts.usageStats.todayFromReset", { time: todayFromReset })}</div> : null}
-          <div>{t("accounts.usageStats.requests", { total: n(stats.todayRequests), failed: n(stats.todayFailedRequests) })}</div>
+          <div>{t("accounts.usageStats.requests", { total: n(stats.todayRequests), success: n(stats.todayRequests - stats.todayFailedRequests), failed: n(stats.todayFailedRequests) })}</div>
           <div>{t("accounts.usageStats.tokensToday", { input: n(stats.todayInputTokens), cached: n(stats.todayCachedInputTokens), output: n(stats.todayOutputTokens), total: n(stats.todayTokens) })}</div>
           <div>{t("accounts.usageStats.costToday", { total: formatUsageUSD(stats.todayCostUsdTicks) })}</div>
         </>

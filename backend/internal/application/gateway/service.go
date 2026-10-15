@@ -133,6 +133,8 @@ type Input struct {
 	// ForcedAccountID on the account's own egress (no forced node) and skips
 	// the quality hold. Never set from client input.
 	CanaryProbe bool
+	// skipAutoCompact marks the gateway's own summarization request.
+	skipAutoCompact bool
 }
 
 type Usage struct {
@@ -234,6 +236,7 @@ type Service struct {
 	qualityRetry                atomic.Pointer[QualityRetryRuntime]
 	maxUpstreamRequestBytes     atomic.Int64
 	requestSlimming             requestSlimmingState
+	autoCompact                 autoCompactState
 }
 
 type teamModelRateLimit struct {
@@ -990,6 +993,10 @@ func (s *Service) createResponseAt(ctx context.Context, input Input, path string
 		auditBase.RequestHeaders = withSlimmingAuditHeader(auditBase.RequestHeaders, stats)
 		s.logger.Info("request_slimmed", "request_id", input.RequestID, "model", publicModel, "original_bytes", stats.OriginalBytes, "slimmed_bytes", stats.SlimmedBytes, "media_removed", stats.mediaRemoved(), "images_removed", stats.ImagesRemoved, "videos_removed", stats.VideosRemoved, "audios_removed", stats.AudiosRemoved, "files_removed", stats.FilesRemoved, "data_uris_removed", stats.DataURIsRemoved, "outputs_trimmed", stats.OutputsTrimmed, "output_bytes_omitted", stats.BytesTrimmed)
 	}
+	if st, compacted := s.maybeAutoCompact(ctx, &input, route.UpstreamModel); compacted {
+		auditBase.RequestHeaders = withCompactionAuditHeader(auditBase.RequestHeaders, st)
+		s.logger.Info("context_compacted", "request_id", input.RequestID, "model", publicModel, "window", st.Window, "threshold_tokens", st.Threshold, "before_tokens", st.BeforeTokens, "after_tokens", st.AfterTokens, "before_bytes", st.BeforeBytes, "after_bytes", st.AfterBytes, "items_compacted", st.ItemsCompacted, "cache_hit", st.CacheHit, "fallback", st.Fallback, "summary_chars", st.SummaryChars, "summary_ms", st.SummaryMS, "summary_error", st.SummaryError)
+	}
 	if tooLarge := s.checkUpstreamRequestSize(len(input.Body)); tooLarge != nil {
 		// Fail fast before any account lease or upstream call: xAI cannot process
 		// bodies this large and would only time out behind Cloudflare.
@@ -1395,7 +1402,8 @@ attemptLoop:
 			lease.completeSelectorObservation(false)
 			lease.Release()
 			lastErr = fmt.Errorf("大请求慢速返回 401，跳过凭据失效处理")
-			lastFailure = newHTTPUpstreamFailure(http.StatusUnauthorized, body, credential.ID, credential.Name)
+			_ = body
+			lastFailure = newLargeRequestUpstreamFailure(len(input.Body), credential.ID, credential.Name, http.StatusUnauthorized)
 			s.logger.Warn("upstream_slow_large_unauthorized_ignored", "request_id", input.RequestID, "account_id", credential.ID, "bytes", len(input.Body), "elapsed", time.Since(responseStartedAt))
 			break attemptLoop
 		}
@@ -1446,7 +1454,8 @@ attemptLoop:
 				body, _ := readRetryableBody(response.Body)
 				lease.Release()
 				lastErr = fmt.Errorf("大请求慢速返回 401，跳过凭据失效处理")
-				lastFailure = newHTTPUpstreamFailure(http.StatusUnauthorized, body, credential.ID, credential.Name)
+				_ = body
+				lastFailure = newLargeRequestUpstreamFailure(len(input.Body), credential.ID, credential.Name, http.StatusUnauthorized)
 				s.logger.Warn("upstream_slow_large_unauthorized_ignored", "request_id", input.RequestID, "account_id", credential.ID, "bytes", len(input.Body), "after_refresh", true)
 				break attemptLoop
 			}
@@ -1623,6 +1632,12 @@ attemptLoop:
 				// Cloudflare HTML 5xx on a huge body is caused by the request, not the
 				// account: do not cool the account down.
 				s.logger.Warn("upstream_large_request_cloudflare_no_cooldown", "request_id", input.RequestID, "account_id", credential.ID, "status", response.StatusCode, "bytes", len(input.Body))
+				// Fail fast: retrying the same oversized body on other accounts only
+				// repeats the edge timeout. Tell the client the request is too large.
+				lease.Release()
+				lastErr = fmt.Errorf("大请求被 Cloudflare 拒绝 %d", response.StatusCode)
+				lastFailure = newLargeRequestUpstreamFailure(len(input.Body), credential.ID, credential.Name, response.StatusCode)
+				break attemptLoop
 			} else if !lastFailure.AccountScoped && response.StatusCode >= http.StatusInternalServerError {
 				// Provider-wide 5xx responses should rotate this request and briefly
 				// isolate the account across requests, but must not grow the durable

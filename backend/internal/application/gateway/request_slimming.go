@@ -41,6 +41,28 @@ type RequestSlimmingConfig struct {
 	KeepMediaTurns      int
 	KeepImageTurns      int
 	KeepToolOutputTurns int
+	// ToolOutputMaxBytes / ShellOutputMaxChars are the Grok Build source
+	// truncation limits applied to every tool output in every turn
+	// (xai-grok-tools: general results 40_000 bytes, terminal 20_000 chars).
+	// 0 = default, negative = disabled.
+	ToolOutputMaxBytes  int
+	ShellOutputMaxChars int
+}
+
+const (
+	DefaultToolOutputMaxBytes  = 40_000
+	DefaultShellOutputMaxChars = 20_000
+)
+
+func (c RequestSlimmingConfig) toolLimits() (int, int) {
+	general, shell := c.ToolOutputMaxBytes, c.ShellOutputMaxChars
+	if general == 0 {
+		general = DefaultToolOutputMaxBytes
+	}
+	if shell == 0 {
+		shell = DefaultShellOutputMaxChars
+	}
+	return general, shell
 }
 
 func (c RequestSlimmingConfig) mediaTurns() int {
@@ -71,7 +93,7 @@ func (s *Service) requestSlimmingConfig() RequestSlimmingConfig {
 	if cfg := s.requestSlimming.v.Load(); cfg != nil {
 		return *cfg
 	}
-	return RequestSlimmingConfig{Enabled: true, KeepMediaTurns: DefaultSlimKeepMediaTurns, KeepImageTurns: DefaultSlimKeepImageTurns, KeepToolOutputTurns: DefaultSlimKeepToolTurns}
+	return RequestSlimmingConfig{Enabled: true, KeepMediaTurns: DefaultSlimKeepMediaTurns, KeepImageTurns: DefaultSlimKeepImageTurns, KeepToolOutputTurns: DefaultSlimKeepToolTurns, ToolOutputMaxBytes: DefaultToolOutputMaxBytes, ShellOutputMaxChars: DefaultShellOutputMaxChars}
 }
 
 type slimStats struct {
@@ -137,6 +159,8 @@ func slimRequestBody(body []byte, cfg RequestSlimmingConfig) ([]byte, slimStats)
 		totalTurns = turnOf[len(turnOf)-1]
 	}
 	keepImg, keepTool := cfg.mediaTurns(), cfg.KeepToolOutputTurns
+	generalLimit, shellLimit := cfg.toolLimits()
+	callNames := collectToolCallNames(items)
 	textType := "text"
 	if field == "input" {
 		textType = "input_text"
@@ -145,10 +169,14 @@ func slimRequestBody(body []byte, cfg RequestSlimmingConfig) ([]byte, slimStats)
 		age := totalTurns - turnOf[i] // 0 = latest turn
 		dropImages := age >= keepImg
 		trimTools := age >= keepTool && age >= 1
-		if !dropImages && !trimTools {
+		capTools := generalLimit > 0 || shellLimit > 0
+		if !dropImages && !trimTools && !capTools {
 			continue
 		}
 		if !dropImages && !bytes.Contains(raw, []byte("output")) && !bytes.Contains(raw, []byte("tool")) {
+			continue
+		}
+		if !dropImages && !trimTools && len(raw) <= min(positiveOr(generalLimit, 1<<30), positiveOr(shellLimit, 1<<30)) {
 			continue
 		}
 		var v any
@@ -167,7 +195,16 @@ func slimRequestBody(body []byte, cfg RequestSlimmingConfig) ([]byte, slimStats)
 			changed = stripMedia(obj, textType, &local) || changed
 		}
 		if trimTools {
-			changed = trimToolOutputs(obj, &local) || changed
+			changed = trimToolOutputs(obj, toolTrimPolicy{threshold: slimToolOutputThreshold, head: slimToolOutputHead, tail: slimToolOutputTail}, &local) || changed
+		} else if capTools {
+			limit := generalLimit
+			chars := false
+			if isShellToolName(toolOutputName(obj, callNames)) {
+				limit, chars = shellLimit, true
+			}
+			if limit > 0 {
+				changed = trimToolOutputs(obj, toolTrimPolicy{threshold: limit, head: limit*6/10 - 128, tail: limit*4/10 - 128, chars: chars}, &local) || changed
+			}
 		}
 		if !changed {
 			continue
@@ -438,20 +475,32 @@ func sortedKeys(m map[string]any) []string {
 }
 
 // trimToolOutputs shortens oversized tool results in place.
-func trimToolOutputs(obj map[string]any, st *slimStats) bool {
+type toolTrimPolicy struct {
+	threshold, head, tail int
+	chars                 bool // measure in runes instead of bytes
+}
+
+func positiveOr(v, fallback int) int {
+	if v > 0 {
+		return v
+	}
+	return fallback
+}
+
+func trimToolOutputs(obj map[string]any, p toolTrimPolicy, st *slimStats) bool {
 	t, _ := obj["type"].(string)
 	role, _ := obj["role"].(string)
 	switch {
 	case t == "function_call_output" || t == "custom_tool_call_output" || t == "local_shell_call_output":
-		return trimField(obj, "output", st)
+		return trimField(obj, "output", p, st)
 	case role == "tool":
-		return trimField(obj, "content", st)
+		return trimField(obj, "content", p, st)
 	case role == "user":
 		changed := false
 		if blocks, ok := obj["content"].([]any); ok {
 			for _, b := range blocks {
 				if bm, ok := b.(map[string]any); ok && bm["type"] == "tool_result" {
-					changed = trimField(bm, "content", st) || changed
+					changed = trimField(bm, "content", p, st) || changed
 				}
 			}
 		}
@@ -460,10 +509,10 @@ func trimToolOutputs(obj map[string]any, st *slimStats) bool {
 	return false
 }
 
-func trimField(obj map[string]any, key string, st *slimStats) bool {
+func trimField(obj map[string]any, key string, p toolTrimPolicy, st *slimStats) bool {
 	switch v := obj[key].(type) {
 	case string:
-		if s, ok := trimText(v, st); ok {
+		if s, ok := trimText(v, p, st); ok {
 			obj[key] = s
 			return true
 		}
@@ -472,7 +521,7 @@ func trimField(obj map[string]any, key string, st *slimStats) bool {
 		for _, el := range v {
 			if m, ok := el.(map[string]any); ok {
 				if text, ok := m["text"].(string); ok {
-					if s, ok := trimText(text, st); ok {
+					if s, ok := trimText(text, p, st); ok {
 						m["text"] = s
 						changed = true
 					}
@@ -484,26 +533,132 @@ func trimField(obj map[string]any, key string, st *slimStats) bool {
 	return false
 }
 
-func trimText(s string, st *slimStats) (string, bool) {
-	if len(s) <= slimToolOutputThreshold {
+func trimText(s string, p toolTrimPolicy, st *slimStats) (string, bool) {
+	if len(s) <= p.threshold {
 		return s, false
 	}
-	headEnd := slimToolOutputHead
-	for headEnd > 0 && !utf8.RuneStart(s[headEnd]) {
-		headEnd--
+	headEnd, tailStart := 0, len(s)
+	unit, unitEN := "字节", "bytes"
+	if p.chars {
+		runes := utf8.RuneCountInString(s)
+		if runes <= p.threshold {
+			return s, false
+		}
+		unit, unitEN = "字符", "chars"
+		// byte offsets of the head/tail rune boundaries
+		count := 0
+		for i := range s {
+			if count == p.head {
+				headEnd = i
+			}
+			if count == runes-p.tail {
+				tailStart = i
+				break
+			}
+			count++
+		}
+	} else {
+		headEnd = p.head
+		for headEnd > 0 && !utf8.RuneStart(s[headEnd]) {
+			headEnd--
+		}
+		tailStart = len(s) - p.tail
+		for tailStart < len(s) && !utf8.RuneStart(s[tailStart]) {
+			tailStart++
+		}
 	}
-	tailStart := len(s) - slimToolOutputTail
-	for tailStart < len(s) && !utf8.RuneStart(s[tailStart]) {
-		tailStart++
+	if tailStart <= headEnd {
+		return s, false
 	}
 	omitted := tailStart - headEnd
+	omittedUnits := omitted
+	if p.chars {
+		omittedUnits = utf8.RuneCountInString(s[headEnd:tailStart])
+	}
 	var b strings.Builder
 	b.WriteString(s[:headEnd])
-	fmt.Fprintf(&b, "\n...[中间 %d 字节已省略 / %d bytes omitted to save context]...\n", omitted, omitted)
+	fmt.Fprintf(&b, "\n...[输出过长，中间 %d %s已省略 / output truncated: %d %s omitted]...\n", omittedUnits, unit, omittedUnits, unitEN)
 	b.WriteString(s[tailStart:])
 	st.OutputsTrimmed++
 	st.BytesTrimmed += omitted
 	return b.String(), true
+}
+
+// collectToolCallNames maps call ids to tool names across Responses
+// function_call items, chat assistant tool_calls and Anthropic tool_use blocks.
+func collectToolCallNames(items []json.RawMessage) map[string]string {
+	names := map[string]string{}
+	for _, raw := range items {
+		var it struct {
+			Type      string `json:"type"`
+			CallID    string `json:"call_id"`
+			Name      string `json:"name"`
+			ToolCalls []struct {
+				ID       string `json:"id"`
+				Function struct {
+					Name string `json:"name"`
+				} `json:"function"`
+			} `json:"tool_calls"`
+			Content json.RawMessage `json:"content"`
+		}
+		if json.Unmarshal(raw, &it) != nil {
+			continue
+		}
+		if it.CallID != "" && it.Name != "" {
+			names[it.CallID] = it.Name
+		}
+		if it.Type == "local_shell_call" && it.CallID != "" {
+			names[it.CallID] = "local_shell"
+		}
+		for _, tc := range it.ToolCalls {
+			names[tc.ID] = tc.Function.Name
+		}
+		var blocks []struct {
+			Type string `json:"type"`
+			ID   string `json:"id"`
+			Name string `json:"name"`
+		}
+		if json.Unmarshal(it.Content, &blocks) == nil {
+			for _, b := range blocks {
+				if b.Type == "tool_use" && b.ID != "" {
+					names[b.ID] = b.Name
+				}
+			}
+		}
+	}
+	return names
+}
+
+func toolOutputName(obj map[string]any, names map[string]string) string {
+	if t, _ := obj["type"].(string); t == "local_shell_call_output" {
+		return "local_shell"
+	}
+	for _, k := range []string{"call_id", "tool_call_id"} {
+		if id, _ := obj[k].(string); id != "" {
+			return names[id]
+		}
+	}
+	if blocks, ok := obj["content"].([]any); ok {
+		for _, b := range blocks {
+			if bm, ok := b.(map[string]any); ok && bm["type"] == "tool_result" {
+				if id, _ := bm["tool_use_id"].(string); id != "" {
+					return names[id]
+				}
+			}
+		}
+	}
+	return ""
+}
+
+// isShellToolName reports terminal-like tools, which Grok Build caps at 20k chars.
+func isShellToolName(name string) bool {
+	name = strings.ToLower(name)
+	for _, k := range []string{"shell", "exec", "bash", "terminal", "command", "write_stdin", "run_cmd", "powershell"} {
+		if strings.Contains(name, k) {
+			return true
+		}
+	}
+	return false
 }
 
 func withSlimmingAuditHeader(headers map[string][]string, st slimStats) map[string][]string {

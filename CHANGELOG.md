@@ -2,6 +2,17 @@
 
 Shunlly/grok2api fork of [chenyme/grok2api](https://github.com/chenyme/grok2api).
 
+## v3.5.2 — 2026-10-15
+
+### Added
+- 自动上下文压缩（模仿 Grok Build `auto_compact_threshold_percent=85`）：估算输入 token 超过模型上下文窗口 85% 时，用同一模型（同一 Client Key / 账号池）按 Grok Build 的 full-replace 摘要提示词把较早历史写成摘要，替换为「This session is being continued…」开头的用户消息；保留 system/developer、最后一条用户消息、最近 2 轮（工具调用与输出成对保留）。摘要上限 60k 字符、预留 32768 输出 token。摘要按前缀哈希链缓存（内存 LRU 256），Codex 重发全量历史时复用、只增量补摘要；摘要失败退化为丢弃最早记录 + 占位，不报错。配置 `gateway.autoCompact.*`，日志 `context_compacted`，审计请求头 `X-Grok2api-Context-Compacted`（前后 token / 字节）。摘要请求本身以 `compaction` 操作计入审计。
+- 工具输出源头截断（Grok Build 限制）：所有轮次的工具输出——普通 40000 字节、终端类 20000 字符，保留头 60% + 尾 40%。配置 `gateway.requestSlimming.toolOutputMaxBytes / shellOutputMaxChars`。
+
+### Changed
+- `gateway.maxUpstreamRequestBytes` 默认降为 2.5 MiB（在压缩之后检查）。
+- ≥2 MiB 的大请求遇到慢速 401 或 Cloudflare 5xx 时立即失败，返回 413 `request_too_large` 和明确提示（不再显示「上游服务暂不可用」，也不再换号重试）。
+- 账号列表的周期 / 今日用量改为打开列表时按本周期实时重算（只读），不再显示整点同步时的旧快照；请求数显示「成功 · 失败」分开计数。
+
 ## v3.5.1 — 2026-10-15
 
 ### Fixed

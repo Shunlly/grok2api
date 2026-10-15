@@ -40,7 +40,7 @@ func TestSlimReplayLargeCodexPayload(t *testing.T) {
 	if !json.Valid(out) {
 		t.Fatal("invalid json")
 	}
-	if st.SlimmedBytes >= 3<<20 || st.ImagesRemoved != 28 || st.OutputsTrimmed != 28 {
+	if st.SlimmedBytes >= 3<<20 || st.ImagesRemoved != 28 || st.OutputsTrimmed != 30 { // 28 old + 2 recent shell outputs capped at 20k chars
 		t.Fatalf("unexpected stats %+v", st)
 	}
 	var orig, slim struct {
@@ -67,8 +67,12 @@ func TestSlimReplayLargeCodexPayload(t *testing.T) {
 			t.Fatalf("recent image removed at %d", i)
 		}
 	}
-	if slim.Input[n-2]["output"] != orig.Input[n-2]["output"] || slim.Input[n-7]["output"] != orig.Input[n-7]["output"] {
-		t.Fatal("recent tool output trimmed")
+	// Recent shell outputs are only capped at the Grok Build 20k-char source limit.
+	for _, idx := range []int{n - 2, n - 7} {
+		got := slim.Input[idx]["output"].(string)
+		if len([]rune(got)) > 20200 || !strings.HasPrefix(got, orig.Input[idx]["output"].(string)[:1000]) {
+			t.Fatalf("recent tool output not capped correctly at %d", idx)
+		}
 	}
 	old := slim.Input[1]["content"].([]any)[1].(map[string]any)
 	if old["type"] != "input_text" || old["text"] != slimImagePlaceholder {
