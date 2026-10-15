@@ -2,6 +2,16 @@
 
 Shunlly/grok2api fork of [chenyme/grok2api](https://github.com/chenyme/grok2api).
 
+## v3.4.10 — 2026-10-15
+
+### Added
+- 请求瘦身扩展到所有多模态 / 二进制内容：早于最近 `keepMediaTurns`（默认 2）轮用户对话的视频（`input_video`、`video_url`、`video`）、音频（`input_audio`、`audio_url`、`audio`）、内嵌文件 / 文档（Responses `input_file` 带 `file_data`、Chat `file` 带 `file_data`、Anthropic `document` 含 base64 PDF / 文本源）以及任意字符串里 ≥1KB 的 `data:*;base64,...` 内嵌数据（含工具输出），分别替换为「[视频已省略]」「[音频已省略]」「[文件已省略: 文件名]」「[内嵌数据已省略: MIME]」。
+- 仅以 `file_id` / URL 引用的文件（无内嵌数据）保持不变；最近轮次内容（含 URL 引用的媒体）不改动。占位文本类型随格式：Responses 用 `input_text`，Chat / Anthropic 用 `text`。
+- 日志 `request_slimmed` 与审计头 `X-Grok2api-Request-Slimming` 按类型记录：`images_removed`、`videos_removed`、`audios_removed`、`files_removed`、`data_uris_removed`，以及合计 `media_removed`。
+
+### Changed
+- 配置项改名为 `gateway.requestSlimming.keepMediaTurns`；旧的 `keepImageTurns` 仍兼容（`keepMediaTurns` 未设置时生效）。
+
 ## v3.4.9 — 2026-10-15
 
 ### Added
