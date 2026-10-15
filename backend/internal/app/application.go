@@ -438,7 +438,7 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*Applicat
 	canaryService := canaryapp.NewService(canaryapp.Config{
 		Enabled: cfg.Canary.Enabled, Interval: cfg.Canary.Interval.Value(), InitialDelay: cfg.Canary.InitialDelay.Value(),
 		Model: cfg.Canary.Model, ReasoningEffort: cfg.Canary.ReasoningEffort, MaxOutputTokens: cfg.Canary.MaxOutputTokens,
-		ProbeTimeout: cfg.Canary.ProbeTimeout.Value(), Retention: time.Duration(cfg.Canary.RetentionDays) * 24 * time.Hour,
+		ProbeTimeout: cfg.Canary.ProbeTimeout.Value(), IdleTimeout: cfg.Canary.IdleTimeout.Value(), Retention: time.Duration(cfg.Canary.RetentionDays) * 24 * time.Hour,
 		ArtifactRetention: time.Duration(cfg.Audit.RetentionDays) * 24 * time.Hour,
 	}, qualityGuardIdentity.ID, gatewayService, accountRepo, relational.NewCanaryRepository(database), logger)
 	accountService.SetAutoReactivateConfig(accountapp.AutoReactivateConfig{

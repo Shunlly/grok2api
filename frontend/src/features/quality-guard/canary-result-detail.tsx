@@ -35,7 +35,11 @@ export function CanaryResultDetail({ resultId }: { resultId: number }) {
         {stat(t("qualityGuard.canary.detail.total"), artifact.totalTokens)}
         {stat(t("qualityGuard.canary.detail.firstToken"), artifact.firstTokenMs ? `${(artifact.firstTokenMs / 1000).toFixed(1)}s` : "-")}
         {stat(t("qualityGuard.canary.detail.duration"), artifact.durationMs ? `${(artifact.durationMs / 1000).toFixed(1)}s` : "-")}
+        {artifact.errorCode ? stat(t("qualityGuard.canary.detail.received"), `${artifact.streamBytes ?? 0} B / ${artifact.streamChunks ?? 0}`) : null}
       </div>
+      {artifact.errorCode ? (
+        <p className="text-destructive"><span className="text-muted-foreground">{t("qualityGuard.canary.detail.errorCode")}:</span> <span className="font-mono">{artifact.errorCode}</span>{artifact.errorCode === "canary_stream_idle_timeout" ? ` · ${t("qualityGuard.canary.detail.idleTimeoutHint")}` : ""} · {t("qualityGuard.canary.detail.partial")}</p>
+      ) : null}
       <div className="space-y-1">
         <p><span className="text-muted-foreground">{t("qualityGuard.canary.detail.verdict")}:</span> {verdict}</p>
         {artifact.checkDetail ? <p><span className="text-muted-foreground">{t("qualityGuard.canary.detail.check")}:</span> {artifact.checkDetail}</p> : null}

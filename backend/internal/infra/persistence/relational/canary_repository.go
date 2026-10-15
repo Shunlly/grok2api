@@ -174,6 +174,9 @@ type canaryProbeArtifactModel struct {
 	FirstTokenMS       int64     `gorm:"not null;default:0"`
 	DurationMS         int64     `gorm:"not null;default:0"`
 	CheckDetail        string    `gorm:"size:1024;not null;default:''"`
+	ErrorCode          string    `gorm:"size:64;not null;default:''"`
+	StreamBytes        int64     `gorm:"not null;default:0"`
+	StreamChunks       int64     `gorm:"not null;default:0"`
 	CreatedAt          time.Time `gorm:"not null;index:idx_canary_artifact_created"`
 }
 

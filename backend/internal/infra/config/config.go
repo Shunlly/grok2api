@@ -269,7 +269,9 @@ type CanaryConfig struct {
 	ReasoningEffort string   `yaml:"reasoningEffort"`
 	MaxOutputTokens int      `yaml:"maxOutputTokens"`
 	ProbeTimeout    Duration `yaml:"probeTimeout"`
-	RetentionDays   int      `yaml:"retentionDays"`
+	// IdleTimeout fails silent probes early (first token / gap between chunks).
+	IdleTimeout   Duration `yaml:"idleTimeout"`
+	RetentionDays int      `yaml:"retentionDays"`
 }
 
 // AutoReactivateConfig controls automatic re-activation of accounts whose
@@ -988,7 +990,7 @@ func defaultConfig() Config {
 		Canary: CanaryConfig{
 			Enabled: false, Interval: Duration(6 * time.Hour), InitialDelay: Duration(10 * time.Minute),
 			Model: "grok-4.7", ReasoningEffort: "high", MaxOutputTokens: 6000,
-			ProbeTimeout: Duration(5 * time.Minute), RetentionDays: 30,
+			ProbeTimeout: Duration(5 * time.Minute), IdleTimeout: Duration(75 * time.Second), RetentionDays: 30,
 		},
 		AutoReactivate: AutoReactivateConfig{
 			Enabled: true, Interval: Duration(10 * time.Minute), MaxAge: Duration(5 * 24 * time.Hour), IncludeQualityDisabled: false,

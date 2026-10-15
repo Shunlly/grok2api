@@ -257,6 +257,9 @@ type Artifact struct {
 	FirstTokenMS       int64     `json:"firstTokenMs"`
 	DurationMS         int64     `json:"durationMs"`
 	CheckDetail        string    `json:"checkDetail"`
+	ErrorCode          string    `json:"errorCode,omitempty"`
+	StreamBytes        int64     `json:"streamBytes"`
+	StreamChunks       int64     `json:"streamChunks"`
 	CreatedAt          time.Time `json:"createdAt"`
 }
 

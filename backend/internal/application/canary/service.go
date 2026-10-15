@@ -28,7 +28,9 @@ type Config struct {
 	ReasoningEffort string
 	MaxOutputTokens int
 	ProbeTimeout    time.Duration
-	Retention       time.Duration
+	// IdleTimeout is the first-token / inter-chunk silence budget inside ProbeTimeout.
+	IdleTimeout time.Duration
+	Retention   time.Duration
 	// ArtifactRetention keeps prompt/answer/reasoning artifacts (aligned with audit retention).
 	ArtifactRetention time.Duration
 }
@@ -87,6 +89,12 @@ func NewService(cfg Config, clientKeyID uint64, prober Prober, accounts Accounts
 	}
 	if cfg.ProbeTimeout <= 0 {
 		cfg.ProbeTimeout = 5 * time.Minute
+	}
+	if cfg.IdleTimeout <= 0 {
+		cfg.IdleTimeout = gatewayapp.DefaultCanaryIdleTimeout
+	}
+	if cfg.IdleTimeout > cfg.ProbeTimeout {
+		cfg.IdleTimeout = cfg.ProbeTimeout
 	}
 	if cfg.Retention <= 0 {
 		cfg.Retention = 30 * 24 * time.Hour
@@ -188,6 +196,7 @@ func (s *Service) ProbeAccount(ctx context.Context, accountID uint64, accountNam
 	out, probeErr := s.prober.ProbeAccountCanary(probeCtx, gatewayapp.CanaryProbeInput{
 		ClientKeyID: s.clientKeyID, AccountID: accountID, Model: s.cfg.Model, Prompt: prompt.Text,
 		ReasoningEffort: s.cfg.ReasoningEffort, MaxOutputTokens: s.cfg.MaxOutputTokens,
+		IdleTimeout: s.cfg.IdleTimeout,
 	})
 	cancel()
 	result.RequestID = out.RequestID
@@ -262,6 +271,7 @@ func (s *Service) runRoundLocked(ctx context.Context, roundID, trigger string) (
 			out, err := s.prober.ProbeAccountCanary(probeCtx, gatewayapp.CanaryProbeInput{
 				ClientKeyID: s.clientKeyID, AccountID: accountID, Model: s.cfg.Model, Prompt: prompt.Text,
 				ReasoningEffort: s.cfg.ReasoningEffort, MaxOutputTokens: s.cfg.MaxOutputTokens,
+				IdleTimeout: s.cfg.IdleTimeout,
 			})
 			value := &results[index]
 			value.RequestID = out.RequestID
@@ -441,6 +451,7 @@ func (s *Service) newArtifact(prompt canary.Prompt, out gatewayapp.CanaryProbeOu
 		InputTokens: out.InputTokens, OutputTokens: out.OutputTokens, ReasoningTokens: out.ReasoningTokens, TotalTokens: out.TotalTokens,
 		ResponseModel: out.ResponseModel, ReasoningEffort: s.cfg.ReasoningEffort, MaxOutputTokens: s.cfg.MaxOutputTokens,
 		FirstTokenMS: out.FirstTokenMS, DurationMS: out.DurationMS,
+		ErrorCode: out.ErrorCode, StreamBytes: out.StreamBytes, StreamChunks: out.StreamChunks,
 	}
 }
 
