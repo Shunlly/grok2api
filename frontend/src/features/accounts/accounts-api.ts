@@ -135,6 +135,8 @@ export type AccountDTO = {
   planSyncedAt?: string;
   planNoSubscription?: boolean;
   lastUsedSource?: string;
+  /** 真实请求用量快照（同步额度时刷新）；金额单位 USD ticks。 */
+  usageStats?: AccountUsageStatsDTO;
   noQuota?: boolean;
   planTier?: string;
   planRaw?: string;
@@ -193,6 +195,18 @@ const billingHistoryValidator = hasShape({
   year: isNumber, month: isNumber, periodType: isOptional(isString), periodStart: isOptional(isString), periodEnd: isOptional(isString),
   includedUsed: isNumber, onDemandUsed: isNumber, totalUsed: isNumber,
 });
+export interface AccountUsageStatsDTO {
+  totalRequests: number; totalFailedRequests: number; totalInputTokens: number; totalCachedInputTokens: number; totalOutputTokens: number;
+  totalReasoningTokens: number; totalTokens: number; totalCostUsdTicks: number; totalUpstreamCostUsdTicks: number; totalEstimatedCostUsdTicks: number;
+  firstAuditAt?: string; todayDate: string; todayRequests: number; todayFailedRequests: number; todayInputTokens: number; todayCachedInputTokens: number;
+  todayOutputTokens: number; todayTokens: number; todayCostUsdTicks: number; computedAt: string;
+}
+const usageStatsValidator = hasShape({
+  totalRequests: isNumber, totalFailedRequests: isNumber, totalInputTokens: isNumber, totalCachedInputTokens: isNumber, totalOutputTokens: isNumber,
+  totalReasoningTokens: isNumber, totalTokens: isNumber, totalCostUsdTicks: isNumber, totalUpstreamCostUsdTicks: isNumber, totalEstimatedCostUsdTicks: isNumber,
+  firstAuditAt: isOptional(isString), todayDate: isString, todayRequests: isNumber, todayFailedRequests: isNumber, todayInputTokens: isNumber, todayCachedInputTokens: isNumber,
+  todayOutputTokens: isNumber, todayTokens: isNumber, todayCostUsdTicks: isNumber, computedAt: isString,
+});
 const billingValidator = hasShape({
   planCode: isOptional(isString), planName: isOptional(isString), monthlyLimit: isNumber, used: isNumber, remaining: isNumber,
   onDemandCap: isNumber, onDemandUsed: isNumber, prepaidBalance: isNumber, creditUsagePercent: isNumber,
@@ -229,7 +243,7 @@ const accountValidator = hasShape({
   linkedAccountId: isOptional(isString), linkedAccountName: isOptional(isString), linkedProvider: isOptional(isOneOf("grok_build", "grok_web")), linkedAccounts: isOptional(isArrayOf(linkedAccountValidator)),
   createdAt: isString, billing: isOptional(billingValidator), quota: quotaValidator, quotaWindows: isOptional(isArrayOf(quotaWindowValidator)),
   modelQuotaBlocks: isOptional(isArrayOf(hasShape({ model: isString, reason: isString, cooldownUntil: isString }))),
-  nextResetAt: isOptional(isString), nextResetSource: isOptional(isString), expiresSource: isOptional(isString), expiresAutoRenew: isOptional(isBoolean), lastUsedSource: isOptional(isString), noQuota: isOptional(isBoolean), planTier: isOptional(isString), planRaw: isOptional(isString), planExpiresAt: isOptional(isString), planExpiresSource: isOptional(isString), planAutoRenew: isOptional(isBoolean), planCancelAtPeriodEnd: isOptional(isBoolean), planStatus: isOptional(isString), planName: isOptional(isString), planBillingInterval: isOptional(isString), planSyncedAt: isOptional(isString), planNoSubscription: isOptional(isBoolean),
+  nextResetAt: isOptional(isString), nextResetSource: isOptional(isString), expiresSource: isOptional(isString), expiresAutoRenew: isOptional(isBoolean), lastUsedSource: isOptional(isString), noQuota: isOptional(isBoolean), planTier: isOptional(isString), planRaw: isOptional(isString), planExpiresAt: isOptional(isString), planExpiresSource: isOptional(isString), planAutoRenew: isOptional(isBoolean), planCancelAtPeriodEnd: isOptional(isBoolean), planStatus: isOptional(isString), planName: isOptional(isString), planBillingInterval: isOptional(isString), planSyncedAt: isOptional(isString), planNoSubscription: isOptional(isBoolean), usageStats: isOptional(usageStatsValidator),
 });
 const decodeBilling = createValidatedDecoder<BillingDTO>("billing", billingValidator);
 const decodeAccount = createValidatedDecoder<AccountDTO>("account", accountValidator);

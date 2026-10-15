@@ -47,6 +47,7 @@ type Handler struct {
 	service *accountapp.Service
 	sync    accountSynchronizer
 	lastUse LastUseLookup
+	usage   UsageStatsLookup
 	models  AccountModelLookup
 }
 
@@ -55,12 +56,48 @@ type LastUseLookup interface {
 	LastRealUseByAccounts(ctx context.Context, accountIDs []uint64) (map[uint64]time.Time, error)
 }
 
+// UsageStatsLookup 读取已保存的账号用量快照（不触发重算）。
+type UsageStatsLookup interface {
+	AccountUsageStatsByAccounts(ctx context.Context, accountIDs []uint64) (map[uint64]repository.AccountUsageStats, error)
+}
+
 // WithLastUse 设置最近使用时间查询；nil 时 lastUsedAt 回退为账号表 last_used_at。
 func (h *Handler) WithLastUse(lookup LastUseLookup) *Handler {
 	if lookup != nil {
 		h.lastUse = lookup
+		// 审计仓储同时提供用量快照读取。
+		if usage, ok := lookup.(UsageStatsLookup); ok {
+			h.usage = usage
+		}
 	}
 	return h
+}
+
+// applyUsageStats 附加已保存的用量快照；读取失败时静默省略。
+func (h *Handler) applyUsageStats(ctx context.Context, items []accountResponse) {
+	if h.usage == nil || len(items) == 0 {
+		return
+	}
+	ids := make([]uint64, 0, len(items))
+	for _, item := range items {
+		ids = append(ids, item.ID)
+	}
+	found, err := h.usage.AccountUsageStatsByAccounts(ctx, ids)
+	if err != nil {
+		return
+	}
+	for i := range items {
+		if v, ok := found[items[i].ID]; ok {
+			items[i].UsageStats = &usageStatsResponse{
+				TotalRequests: v.TotalRequests, TotalFailedRequests: v.TotalFailedRequests, TotalInputTokens: v.TotalInputTokens,
+				TotalCachedInputTokens: v.TotalCachedInputTokens, TotalOutputTokens: v.TotalOutputTokens, TotalReasoningTokens: v.TotalReasoningTokens,
+				TotalTokens: v.TotalTokens, TotalCostUSDTicks: v.TotalCostUSDTicks, TotalUpstreamCostTicks: v.TotalUpstreamCostTicks,
+				TotalEstimatedTicks: v.TotalEstimatedTicks, FirstAuditAt: v.FirstAuditAt, TodayDate: v.TodayDate, TodayRequests: v.TodayRequests,
+				TodayFailedRequests: v.TodayFailedRequests, TodayInputTokens: v.TodayInputTokens, TodayCachedInputTokens: v.TodayCachedInputTokens,
+				TodayOutputTokens: v.TodayOutputTokens, TodayTokens: v.TodayTokens, TodayCostUSDTicks: v.TodayCostUSDTicks, ComputedAt: v.ComputedAt,
+			}
+		}
+	}
 }
 
 // applyLastUse 用审计表的真实请求时间覆盖 lastUsedAt；查询失败或无审计记录时保留账号表值。
@@ -412,6 +449,32 @@ type accountResponse struct {
 	PlanBillingPeriod  string     `json:"planBillingInterval,omitempty"`
 	PlanSyncedAt       *time.Time `json:"planSyncedAt,omitempty"`
 	PlanSubscriptionNo bool       `json:"planNoSubscription,omitempty"`
+	// UsageStats 是账号真实请求用量快照，只在额度/账单同步时刷新（列表读取不重算）。
+	UsageStats *usageStatsResponse `json:"usageStats,omitempty"`
+}
+
+// usageStatsResponse：金额单位为 USD ticks（1 USD = 1e10 ticks），优先上游计费，缺失时用本地估算。
+type usageStatsResponse struct {
+	TotalRequests          int64      `json:"totalRequests"`
+	TotalFailedRequests    int64      `json:"totalFailedRequests"`
+	TotalInputTokens       int64      `json:"totalInputTokens"`
+	TotalCachedInputTokens int64      `json:"totalCachedInputTokens"`
+	TotalOutputTokens      int64      `json:"totalOutputTokens"`
+	TotalReasoningTokens   int64      `json:"totalReasoningTokens"`
+	TotalTokens            int64      `json:"totalTokens"`
+	TotalCostUSDTicks      int64      `json:"totalCostUsdTicks"`
+	TotalUpstreamCostTicks int64      `json:"totalUpstreamCostUsdTicks"`
+	TotalEstimatedTicks    int64      `json:"totalEstimatedCostUsdTicks"`
+	FirstAuditAt           *time.Time `json:"firstAuditAt,omitempty"`
+	TodayDate              string     `json:"todayDate"`
+	TodayRequests          int64      `json:"todayRequests"`
+	TodayFailedRequests    int64      `json:"todayFailedRequests"`
+	TodayInputTokens       int64      `json:"todayInputTokens"`
+	TodayCachedInputTokens int64      `json:"todayCachedInputTokens"`
+	TodayOutputTokens      int64      `json:"todayOutputTokens"`
+	TodayTokens            int64      `json:"todayTokens"`
+	TodayCostUSDTicks      int64      `json:"todayCostUsdTicks"`
+	ComputedAt             time.Time  `json:"computedAt"`
 }
 
 type modelQuotaBlockResponse struct {
@@ -519,6 +582,7 @@ func (h *Handler) list(c *gin.Context) {
 		items = append(items, newAccountResponse(value))
 	}
 	h.applyLastUse(c.Request.Context(), items)
+	h.applyUsageStats(c.Request.Context(), items)
 	response.Success(c, http.StatusOK, gin.H{"items": items, "page": page, "pageSize": pageSize, "total": total})
 }
 
@@ -863,6 +927,7 @@ func (h *Handler) get(c *gin.Context) {
 	}
 	items := []accountResponse{newAccountResponse(value)}
 	h.applyLastUse(c.Request.Context(), items)
+	h.applyUsageStats(c.Request.Context(), items)
 	response.Success(c, http.StatusOK, items[0])
 }
 

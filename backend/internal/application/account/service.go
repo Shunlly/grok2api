@@ -2839,7 +2839,26 @@ func credentialRefreshBackoff(accountID uint64, failureCount int, retryAfter tim
 	return delay + time.Duration((accountID*37)%16)*time.Second
 }
 
+// usageStatsRefresher 由审计仓储实现：额度/账单同步时顺带刷新账号用量快照。
+type usageStatsRefresher interface {
+	RefreshAccountUsageStats(ctx context.Context, accountID uint64, now time.Time) (repository.AccountUsageStats, error)
+}
+
+// refreshUsageStatsBestEffort 刷新账号请求数 / Token / 金额快照，失败只记日志，不影响额度同步结果。
+func (s *Service) refreshUsageStatsBestEffort(ctx context.Context, id uint64) {
+	refresher, ok := s.audits.(usageStatsRefresher)
+	if !ok || id == 0 {
+		return
+	}
+	statsCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+	defer cancel()
+	if _, err := refresher.RefreshAccountUsageStats(statsCtx, id, time.Now()); err != nil {
+		s.logger.Warn("account_usage_stats_refresh_failed", "account_id", id, "error", err)
+	}
+}
+
 func (s *Service) RefreshBilling(ctx context.Context, id uint64) (accountdomain.Billing, error) {
+	defer s.refreshUsageStatsBestEffort(ctx, id)
 	result, err, _ := s.billingSyncs.Do(strconv.FormatUint(id, 10), func() (any, error) {
 		return s.refreshBilling(ctx, id)
 	})
@@ -2997,6 +3016,7 @@ func (s *Service) ExhaustWebQuota(ctx context.Context, id uint64, mode string, r
 }
 
 func (s *Service) RefreshQuota(ctx context.Context, id uint64) ([]accountdomain.QuotaWindow, error) {
+	defer s.refreshUsageStatsBestEffort(ctx, id)
 	result, err, _ := s.quotaSyncs.Do("all:"+strconv.FormatUint(id, 10), func() (any, error) {
 		return s.refreshQuota(ctx, id)
 	})

@@ -36,6 +36,7 @@ var schemaModels = []any{
 	&quotaWindowModel{},
 	&billingModel{},
 	&quotaRecoveryModel{},
+	&accountUsageStatsModel{},
 	&modelRouteModel{},
 	&modelRouteAliasModel{},
 	&modelRouteAccountModel{},
