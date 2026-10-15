@@ -80,3 +80,27 @@ export function toDateTimeLocal(value: string | null | undefined): string {
   const offset = date.getTimezoneOffset() * 60_000;
   return new Date(date.getTime() - offset).toISOString().slice(0, 19);
 }
+
+function pad2(value: number): string {
+  return String(value).padStart(2, "0");
+}
+
+/** 以浏览器本地时区格式化为 "MM-DD HH:mm"。 */
+export function formatResetClock(value: string | Date): string {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return `${pad2(date.getMonth() + 1)}-${pad2(date.getDate())} ${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
+}
+
+/** 相对倒计时，例如 "1天后" / "in 1 day"；未来 1 小时内精确到分钟。 */
+export function formatRelativeFuture(value: string | Date, locale: string, now: Date = new Date()): string {
+  const date = value instanceof Date ? value : new Date(value);
+  const diffMS = date.getTime() - now.getTime();
+  if (Number.isNaN(diffMS)) return "-";
+  const formatter = new Intl.RelativeTimeFormat(locale, { numeric: "auto", style: "short" });
+  const minutes = Math.round(diffMS / 60_000);
+  if (Math.abs(minutes) < 60) return formatter.format(minutes, "minute");
+  const hours = Math.round(diffMS / 3_600_000);
+  if (Math.abs(hours) < 24) return formatter.format(hours, "hour");
+  return formatter.format(Math.round(diffMS / 86_400_000), "day");
+}

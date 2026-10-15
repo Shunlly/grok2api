@@ -2,6 +2,17 @@
 
 Shunlly/grok2api fork of [chenyme/grok2api](https://github.com/chenyme/grok2api).
 
+## v3.3.7 — 2026-10-15
+
+### Changed
+- 仪表盘首字统计排除出口质量探针与定时考题（`request_id` 前缀 `quality_` 或内部 Client Key 发出的请求）；主值改为中位数，附均值、p90 与样本数。
+- 新增按输入长度分组（<2万、2万–6万、6万–12万、12万–20万、>20万）的样本数与中位数，悬停查看；提示说明首字包含上游 prefill，随上下文增长。
+- Dashboard API `usage` 新增 `medianFirstTokenMs`、`p90FirstTokenMs`、`firstTokenBuckets`。
+
+### Added
+- 账号列表与编辑弹窗显示「下次重置」（浏览器本地时区 + 倒计时，未知显示 -）。账号 API 新增 `nextResetAt` / `nextResetSource`。
+  取值：额度耗尽待重置时优先 Billing 周期结束（`quota.periodEnd`），否则 `account_quota_recovery.next_probe_at`；其余取最早的未来时间：Build Billing `usage_period_end`、Web/Console `account_quota_windows.reset_at`（窗口秒数 > 0）、`account_model_quota_blocks.cooldown_until`。已过期的时间忽略。
+
 ## v3.3.4 — 2026-10-14
 
 ### Added

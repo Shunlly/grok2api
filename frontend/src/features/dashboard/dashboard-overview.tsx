@@ -1,9 +1,11 @@
-import { Activity, CircleDollarSign, Gauge, UsersRound, WholeWord, type LucideIcon } from "lucide-react";
+import { Activity, CircleDollarSign, Gauge, Info, UsersRound, WholeWord, type LucideIcon } from "lucide-react";
+import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Pie, PieChart } from "recharts";
 
 import { ChartContainer, type ChartConfig } from "@/components/ui/chart";
 import { Spinner } from "@/components/ui/spinner";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { DashboardDTO } from "@/features/dashboard/dashboard-api";
 import { formatUSD, formatUSDValue } from "@/features/dashboard/dashboard-format";
 import { DashboardPanel } from "@/features/dashboard/dashboard-panel";
@@ -62,9 +64,12 @@ export function DashboardOverview({ dashboard, locale, loading }: DashboardDataP
         />
         <DashboardMetric
           icon={Gauge}
-          label={t("audits.averageFirstToken")}
-          value={hasFirstTokenSamples ? formatDuration(usage?.averageFirstTokenMs ?? 0) : "—"}
-          detail={performanceDetail}
+          label={t("dashboard.ttftTitle")}
+          value={hasFirstTokenSamples ? formatDuration(usage?.medianFirstTokenMs ?? usage?.averageFirstTokenMs ?? 0) : "—"}
+          detail={hasFirstTokenSamples
+            ? t("dashboard.ttftDetail", { avg: formatDuration(usage?.averageFirstTokenMs ?? 0), p90: formatDuration(usage?.p90FirstTokenMs ?? 0), count: formatNumber(usage?.firstTokenSamples ?? 0, locale) })
+            : performanceDetail}
+          hint={<FirstTokenHint usage={usage} locale={locale} performanceDetail={performanceDetail} />}
           loading={loading}
         />
       </div>
@@ -161,11 +166,47 @@ export function DashboardResources({ dashboard, locale, loading }: DashboardData
   );
 }
 
-function DashboardMetric({ icon: Icon, label, value, detail, loading }: { icon: LucideIcon; label: string; value: string; detail: string; loading: boolean }) {
+function FirstTokenHint({ usage, locale, performanceDetail }: { usage?: DashboardDTO["usage"]; locale: string; performanceDetail: string }) {
+  const { t } = useTranslation();
+  const buckets = usage?.firstTokenBuckets ?? [];
+  return (
+    <div className="max-w-72 space-y-2 text-xs">
+      <p>{t("dashboard.ttftHint")}</p>
+      {buckets.length > 0 ? (
+        <div>
+          <p className="mb-1 font-medium">{t("dashboard.ttftBreakdownTitle")}</p>
+          <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 tabular-nums">
+            {buckets.map((bucket) => (
+              <div key={bucket.key} className="contents">
+                <dt className="opacity-80">{t(`dashboard.ttftBuckets.${bucket.key}`, { defaultValue: bucket.key })}</dt>
+                <dd className="text-right">{bucket.samples > 0 ? t("dashboard.ttftBucketRow", { count: formatNumber(bucket.samples, locale), median: formatDuration(bucket.medianMs) }) : t("dashboard.ttftBucketEmpty")}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      ) : null}
+      <p className="opacity-80">{performanceDetail}</p>
+    </div>
+  );
+}
+
+function DashboardMetric({ icon: Icon, label, value, detail, loading, hint }: { icon: LucideIcon; label: string; value: string; detail: string; loading: boolean; hint?: ReactNode }) {
   return (
     <article className="min-h-28 rounded-lg bg-card p-4" aria-busy={loading}>
       <header className="flex min-h-5 items-center justify-between gap-3">
-        <span className="text-xs text-muted-foreground">{label}</span>
+        {hint ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button type="button" className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                {label}
+                <Info className="size-3" aria-hidden />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>{hint}</TooltipContent>
+          </Tooltip>
+        ) : (
+          <span className="text-xs text-muted-foreground">{label}</span>
+        )}
         <Icon className="size-4 shrink-0 text-muted-foreground" />
       </header>
       <div className="mt-3 flex min-h-8 items-center text-2xl font-medium tracking-tight tabular-nums">{loading ? <Spinner /> : value}</div>

@@ -32,6 +32,10 @@ const dashboardUsageAggregateSelect = `
 	COALESCE(SUM(CASE WHEN first_token_ms IS NOT NULL AND output_tokens > 0 AND duration_ms > first_token_ms THEN output_tokens ELSE 0 END), 0) AS throughput_tokens,
 	COALESCE(SUM(CASE WHEN first_token_ms IS NOT NULL AND output_tokens > 0 AND duration_ms > first_token_ms THEN CASE WHEN reasoning_tokens > 0 AND duration_ms - first_token_ms < first_token_ms AND duration_ms - first_token_ms < 1000 THEN duration_ms ELSE duration_ms - first_token_ms END ELSE 0 END), 0) AS generation_total_ms`
 
+// dashboardExcludeProbePredicate 排除出口质量守护探针（request_id 前缀 quality_，含定时考题 quality_canary_）
+// 以及内部 Client Key（如 quality_guard）发出的请求，避免短 prompt 探针拉低首字统计。
+const dashboardExcludeProbePredicate = "request_id NOT LIKE 'quality!_%' ESCAPE '!' AND client_key_id NOT IN (SELECT id FROM client_keys WHERE internal_kind IS NOT NULL)"
+
 const dashboardTopModelsLimit = 10
 
 // Snapshot 在同一数据库事务内读取资源计数和指定区间的审计聚合。
@@ -99,6 +103,22 @@ func (r *DashboardRepository) Snapshot(ctx context.Context, window repository.Da
 			return err
 		}
 		result.Usage.FailedRequests = result.Usage.Requests - result.Usage.SuccessfulRequests
+		var firstTokenRows []struct {
+			FirstTokenMS int64 `gorm:"column:first_token_ms"`
+			InputTokens  int64 `gorm:"column:input_tokens"`
+		}
+		if err := tx.Model(&requestAuditModel{}).
+			Select("first_token_ms, input_tokens").
+			Where("created_at >= ? AND created_at < ? AND first_token_ms IS NOT NULL", start, end).
+			Where(dashboardExcludeProbePredicate).
+			Scan(&firstTokenRows).Error; err != nil {
+			return err
+		}
+		samples := make([]dashboarddomain.FirstTokenSample, 0, len(firstTokenRows))
+		for _, row := range firstTokenRows {
+			samples = append(samples, dashboarddomain.FirstTokenSample{FirstTokenMS: row.FirstTokenMS, InputTokens: row.InputTokens})
+		}
+		result.Usage.ApplyFirstTokenSamples(samples)
 		var buckets []struct {
 			BucketIndex        int `gorm:"column:bucket_index"`
 			Requests           int64
