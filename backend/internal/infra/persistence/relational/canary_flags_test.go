@@ -34,6 +34,11 @@ func TestAccountQualityFlagsOnlyRealHits(t *testing.T) {
 	repo := NewCanaryRepository(database)
 	for _, value := range []canary.Result{
 		{RoundID: "r", Trigger: "schedule", AccountID: canaryID, Model: "m", PromptID: "p", PromptKind: "svg", Status: canary.StatusFail, Reasons: "wrong", CreatedAt: now.Add(-2 * time.Hour)},
+		{RoundID: "r0", Trigger: "schedule", AccountID: 4, Model: "m", PromptID: "p", PromptKind: "svg", Status: canary.StatusError, Error: "timeout", CreatedAt: now.Add(-3 * time.Hour)},
+		{RoundID: "r1", Trigger: "schedule", AccountID: 4, Model: "m", PromptID: "p", PromptKind: "svg", Status: canary.StatusPass, CreatedAt: now.Add(-time.Hour)},
+		{RoundID: "r0", Trigger: "schedule", AccountID: canaryID, Model: "m", PromptID: "p", PromptKind: "svg", Status: canary.StatusFail, Reasons: "older", CreatedAt: now.Add(-5 * time.Hour)},
+		{RoundID: "r0", Trigger: "schedule", AccountID: canaryID, Model: "m", PromptID: "p", PromptKind: "svg", Status: canary.StatusPass, CreatedAt: now.Add(-4 * time.Hour)},
+		{RoundID: "r1", Trigger: "schedule", AccountID: canaryID, Model: "m", PromptID: "p", PromptKind: "svg", Status: canary.StatusError, Error: "x", CreatedAt: now.Add(-3 * time.Hour)},
 		{RoundID: "r", Trigger: "schedule", AccountID: fastID, Model: "m", PromptID: "p", PromptKind: "svg", Status: canary.StatusPass, CreatedAt: now.Add(-2 * time.Hour)},
 	} {
 		if _, err := repo.Create(ctx, value); err != nil {
@@ -48,8 +53,11 @@ func TestAccountQualityFlagsOnlyRealHits(t *testing.T) {
 	for _, flag := range flags {
 		got[flag.AccountID] = flag
 	}
-	if len(got) != 2 || got[1].DegradedHits != 1 || got[1].LastDegradedAt == nil || got[3].CanaryFailures != 1 || got[3].LastCanaryReason != "wrong" {
+	if len(got) != 2 || got[1].DegradedHits != 1 || got[1].LastDegradedAt == nil || got[3].CanaryFailures != 2 || got[3].LastCanaryReason != "wrong" {
 		t.Fatalf("flags = %#v", flags)
+	}
+	if _, ok := got[4]; ok {
+		t.Fatalf("account passing after a failure must be cleared: %#v", got[4])
 	}
 	if _, ok := got[2]; ok {
 		t.Fatalf("speed-only / passing account must not be flagged: %#v", got[2])

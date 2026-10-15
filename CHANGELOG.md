@@ -2,6 +2,11 @@
 
 Shunlly/grok2api fork of [chenyme/grok2api](https://github.com/chenyme/grok2api).
 
+## v3.5.1 — 2026-10-15
+
+### Fixed
+- 账号行「定时考题未通过」提示不再永久保留：现在只统计账号最近一次考题通过之后的连续失败（fail / error），之后只要有一次考题通过，提示即自动消失。悬停文案改为「定时考题自上次通过后连续未通过 N 次」。
+
 ## v3.5.0 — 2026-10-15
 
 ### Added

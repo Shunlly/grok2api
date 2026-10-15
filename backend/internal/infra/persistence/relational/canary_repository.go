@@ -105,7 +105,7 @@ func (r *CanaryRepository) AccountQualityFlags(ctx context.Context, since time.T
 	}
 	var failed []canaryProbeModel
 	if err := r.db.db.WithContext(ctx).Model(&canaryProbeModel{}).
-		Where("status IN ? AND created_at >= ?", []string{canary.StatusFail, canary.StatusError}, since).
+		Where("status IN ? AND created_at >= ?", []string{canary.StatusPass, canary.StatusFail, canary.StatusError}, since).
 		Order("created_at DESC, id DESC").Find(&failed).Error; err != nil {
 		return nil, err
 	}
@@ -126,7 +126,17 @@ func (r *CanaryRepository) AccountQualityFlags(ctx context.Context, since time.T
 			flag.LastDegradedAt = &parsed
 		}
 	}
+	// Probes are newest first: count only the consecutive failures since the
+	// account's most recent pass, so a later pass clears the warning.
+	passed := map[uint64]bool{}
 	for _, row := range failed {
+		if passed[row.AccountID] {
+			continue
+		}
+		if row.Status == canary.StatusPass {
+			passed[row.AccountID] = true
+			continue
+		}
 		flag := get(row.AccountID)
 		flag.CanaryFailures++
 		if flag.LastCanaryFailAt == nil {
