@@ -2,6 +2,14 @@
 
 Shunlly/grok2api fork of [chenyme/grok2api](https://github.com/chenyme/grok2api).
 
+## v3.3.8 — 2026-10-15
+
+### Added
+- 账号列表与编辑弹窗显示「过期时间」和「最近使用」（浏览器本地时区 + 相对时间，未知显示 -，悬停显示完整时间与来源）。
+- 账号 API 新增 `expiresSource`（`oauthAccessToken` / `credential`）、`expiresAutoRenew`、`lastUsedSource`（`requestAudit` / `accountColumn`）；`lastUsedAt` 改为真实请求时间。
+- 过期时间规则：Build OAuth 为 access token 过期时间（约 6 小时）；有 refresh token 且续期未失败时标记自动续期、不高亮，否则已过期标红、3 天内到期标黄。Web / Console SSO 上游不提供 Cookie 过期时间，显示 -。上游未提供 SuperGrok 订阅到期日（Billing `billing_period_end` 等于周额度窗口），不作为过期时间。
+- 最近使用规则：`request_audits` 中该账号最近一次 `status_code < 400` 的请求，排除 `quality_` 前缀（出口探针、定时考题）与内部 Client Key；每个账号走 `idx_audits_account_created_id` 倒序取 1 条。无审计记录（如超过保留期）时回退到账号表 `last_used_at`（可能含探针）。
+
 ## v3.3.7 — 2026-10-15
 
 ### Changed

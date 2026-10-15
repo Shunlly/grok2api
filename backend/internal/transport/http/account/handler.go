@@ -46,6 +46,46 @@ const (
 type Handler struct {
 	service *accountapp.Service
 	sync    accountSynchronizer
+	lastUse LastUseLookup
+}
+
+// LastUseLookup 返回账号最近一次服务真实请求（排除探针/考题）的时间。
+type LastUseLookup interface {
+	LastRealUseByAccounts(ctx context.Context, accountIDs []uint64) (map[uint64]time.Time, error)
+}
+
+// WithLastUse 设置最近使用时间查询；nil 时 lastUsedAt 回退为账号表 last_used_at。
+func (h *Handler) WithLastUse(lookup LastUseLookup) *Handler {
+	if lookup != nil {
+		h.lastUse = lookup
+	}
+	return h
+}
+
+// applyLastUse 用审计表的真实请求时间覆盖 lastUsedAt；查询失败或无审计记录时保留账号表值。
+func (h *Handler) applyLastUse(ctx context.Context, items []accountResponse) {
+	for i := range items {
+		if items[i].LastUsedAt != nil {
+			items[i].LastUsedSource = "accountColumn"
+		}
+	}
+	if h.lastUse == nil || len(items) == 0 {
+		return
+	}
+	ids := make([]uint64, 0, len(items))
+	for _, item := range items {
+		ids = append(ids, item.ID)
+	}
+	found, err := h.lastUse.LastRealUseByAccounts(ctx, ids)
+	if err != nil {
+		return
+	}
+	for i := range items {
+		if t, ok := found[items[i].ID]; ok {
+			at := t
+			items[i].LastUsedAt, items[i].LastUsedSource = &at, "requestAudit"
+		}
+	}
 }
 
 type accountSyncPipeline struct {
@@ -346,6 +386,12 @@ type accountResponse struct {
 	// NextResetAt 是账号最近一次额度重置时间（见 nextQuotaReset 的取值优先级）；未知时省略。
 	NextResetAt     *time.Time `json:"nextResetAt,omitempty"`
 	NextResetSource string     `json:"nextResetSource,omitempty"`
+	// ExpiresSource 说明 expiresAt 的含义（见 credentialExpiry）。
+	ExpiresSource string `json:"expiresSource,omitempty"`
+	// ExpiresAutoRenew 为 true 表示到期前会自动续期，前端不做临期高亮。
+	ExpiresAutoRenew bool `json:"expiresAutoRenew,omitempty"`
+	// LastUsedSource: requestAudit（审计表最近成功真实请求，排除探针/考题）或 accountColumn（账号表 last_used_at，含探针）。
+	LastUsedSource string `json:"lastUsedSource,omitempty"`
 }
 
 type modelQuotaBlockResponse struct {
@@ -452,6 +498,7 @@ func (h *Handler) list(c *gin.Context) {
 	for _, value := range values {
 		items = append(items, newAccountResponse(value))
 	}
+	h.applyLastUse(c.Request.Context(), items)
 	response.Success(c, http.StatusOK, gin.H{"items": items, "page": page, "pageSize": pageSize, "total": total})
 }
 
@@ -794,7 +841,9 @@ func (h *Handler) get(c *gin.Context) {
 		h.writeServiceError(c, "accountGetFailed", err, http.StatusInternalServerError, "读取账号失败")
 		return
 	}
-	response.Success(c, http.StatusOK, newAccountResponse(value))
+	items := []accountResponse{newAccountResponse(value)}
+	h.applyLastUse(c.Request.Context(), items)
+	response.Success(c, http.StatusOK, items[0])
 }
 
 func (h *Handler) clearModelQuotaBlocks(c *gin.Context) {
@@ -1611,7 +1660,24 @@ func newAccountResponse(value accountapp.View) accountResponse {
 		result.Billing = &billing
 	}
 	result.NextResetAt, result.NextResetSource = nextQuotaReset(result, time.Now())
+	result.ExpiresSource, result.ExpiresAutoRenew = credentialExpiry(result)
 	return result
+}
+
+// credentialExpiry 说明 expiresAt 的含义。上游没有提供订阅（SuperGrok）到期日：Billing 的
+// billing_period_end 与周额度窗口相同，不代表订阅结束，因此不用作过期时间。规则：
+//   - Build OAuth：expiresAt = access token 过期时间（约 6 小时）。有 refresh token 且最近续期未失败时
+//     会在到期前自动续期（autoRenew=true，不高亮）；否则这是凭据真正失效的时间。
+//   - Web / Console SSO：上游不返回 SSO Cookie 过期时间，expiresAt 为空，显示 "-"。
+//   - 其他存了 expires_at 的凭据：source=credential。
+func credentialExpiry(value accountResponse) (string, bool) {
+	if value.ExpiresAt == nil {
+		return "", false
+	}
+	if value.AuthType == string(accountdomain.AuthTypeOAuth) {
+		return "oauthAccessToken", value.Refreshable && value.RefreshFailures == 0
+	}
+	return "credential", false
 }
 
 // nextQuotaReset 选出账号下一次额度重置时间。数据来源与优先级：

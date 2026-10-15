@@ -49,12 +49,14 @@ type Dependencies struct {
 	PublicAPIBaseURL   string
 	FrontendStaticPath string
 	// Readiness 返回可观测的分层就绪状态。Ready 仅为旧调用方保留。
-	Readiness              func(context.Context) ReadinessSnapshot
-	Ready                  func(context.Context) bool
-	TrafficReady           func() bool
-	AdminAuth              *adminauthapp.Service
-	Accounts               *accountapp.Service
-	AccountSync            *accountsyncapp.Service
+	Readiness    func(context.Context) ReadinessSnapshot
+	Ready        func(context.Context) bool
+	TrafficReady func() bool
+	AdminAuth    *adminauthapp.Service
+	Accounts     *accountapp.Service
+	AccountSync  *accountsyncapp.Service
+	// AccountLastUse 按审计表计算账号最近真实使用时间（可为空，空时回退到账号 last_used_at）。
+	AccountLastUse         accounthttp.LastUseLookup
 	Models                 *modelapp.Service
 	ClientKeys             *clientkeyapp.Service
 	Audits                 *auditapp.Service
@@ -152,7 +154,7 @@ func New(deps Dependencies) *gin.Engine {
 	adminProtected := adminRoot.Group("")
 	adminProtected.Use(middleware.AdminAuth(deps.AdminAuth))
 	authHandler.RegisterAuthenticated(adminProtected)
-	accounthttp.NewHandler(deps.Accounts, deps.AccountSync).Register(adminProtected)
+	accounthttp.NewHandler(deps.Accounts, deps.AccountSync).WithLastUse(deps.AccountLastUse).Register(adminProtected)
 	modelhttp.NewHandler(deps.Models).Register(adminProtected)
 	clientkeyhttp.NewHandler(deps.ClientKeys).Register(adminProtected)
 	auditHandler := audithttp.NewHandler(deps.Audits)
