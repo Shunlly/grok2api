@@ -149,10 +149,48 @@ func (r *AuditRepository) AccountUsageStatsByAccounts(ctx context.Context, accou
 		}
 		rows = append(rows, batch...)
 	}
+	now := time.Now().UTC()
 	for _, row := range rows {
-		result[row.AccountID] = usageStatsFromModel(row)
+		live := row
+		if row.PeriodStart != nil && !row.PeriodStart.After(now) && (row.PeriodEnd == nil || now.Before(row.PeriodEnd.UTC())) {
+			// 列表读取时按快照里的周期实时重算（只读，不写回），避免显示整点同步时的旧值。
+			if recomputed, err := r.liveUsage(ctx, row, now); err == nil {
+				live = recomputed
+			}
+		}
+		result[row.AccountID] = usageStatsFromModel(live)
 	}
 	return result, nil
+}
+
+func (r *AuditRepository) liveUsage(ctx context.Context, row accountUsageStatsModel, now time.Time) (accountUsageStatsModel, error) {
+	tx := r.db.db.WithContext(ctx)
+	periodStart := row.PeriodStart.UTC()
+	total, err := r.aggregateUsage(tx, row.AccountID, func(q *gorm.DB) *gorm.DB {
+		return q.Where("created_at >= ? AND created_at <= ?", periodStart, now)
+	})
+	if err != nil {
+		return row, err
+	}
+	local := now.In(usageStatsZone)
+	dayStart := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, usageStatsZone).UTC()
+	if periodStart.After(dayStart) {
+		dayStart = periodStart
+	}
+	today, err := r.aggregateUsage(tx, row.AccountID, func(q *gorm.DB) *gorm.DB {
+		return q.Where("created_at >= ? AND created_at <= ?", dayStart, now)
+	})
+	if err != nil {
+		return row, err
+	}
+	row.TotalRequests, row.TotalFailedRequests, row.TotalInputTokens = total.Requests, total.Failed, total.InputTokens
+	row.TotalCachedInputTokens, row.TotalOutputTokens, row.TotalReasoningTokens = total.CachedInputTokens, total.OutputTokens, total.ReasoningTokens
+	row.TotalTokens, row.TotalCostUSDTicks, row.TotalUpstreamCostTicks, row.TotalEstimatedTicks = total.Tokens, total.Cost, total.UpstreamCost, total.EstimatedCost
+	row.LastAuditID = total.MaxID
+	row.TodayDate, row.TodayRequests, row.TodayFailedRequests = local.Format("2006-01-02"), today.Requests, today.Failed
+	row.TodayInputTokens, row.TodayCachedInputTokens, row.TodayOutputTokens = today.InputTokens, today.CachedInputTokens, today.OutputTokens
+	row.TodayTokens, row.TodayCostUSDTicks, row.ComputedAt, row.TodayStart = today.Tokens, today.Cost, now, &dayStart
+	return row, nil
 }
 
 func usageStatsFromModel(m accountUsageStatsModel) repository.AccountUsageStats {

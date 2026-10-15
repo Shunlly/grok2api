@@ -22,7 +22,7 @@ server:
 gateway:
   # 生成类请求（/v1/responses、/v1/chat/completions、/v1/messages）发往 xAI 前的请求体上限，默认 3 MiB。
   # 超过时直接返回 413 request_too_large，不调用上游、不影响账号；0 表示关闭。不能大于 server.maxBodyBytes。
-  maxUpstreamRequestBytes: 3145728
+  maxUpstreamRequestBytes: 2621440
   # 请求瘦身：转发前只保留最近 keepMediaTurns 轮用户对话里的多模态内容（图片、视频、音频、内嵌文件/PDF、
   # 任意 data:*;base64 内嵌数据，含工具输出里的），更早的替换为“[图片已省略]”“[视频已省略]”“[音频已省略]”“[文件已省略: 名称]”等；
   # 旧配置项 keepImageTurns 仍兼容（keepMediaTurns 未设置时生效）。
@@ -32,6 +32,23 @@ gateway:
     enabled: true
     keepMediaTurns: 2
     keepToolOutputTurns: 2
+    # 按 Grok Build 源头截断：所有轮次的工具输出都截到上限（保留开头 60% + 结尾 40%，中间标注已省略）。
+    # 普通工具 40000 字节，终端 / shell 类（exec_command、shell 等）20000 字符；0 = 默认，-1 = 关闭。
+    toolOutputMaxBytes: 40000
+    shellOutputMaxChars: 20000
+  # 自动压缩（模仿 Grok Build）：估算输入 token 超过模型上下文窗口的 thresholdPercent% 时，
+  # 用同一模型把较早历史写成摘要替换掉；保留 system/developer、最后一条用户消息和最近 keepRecentTurns 轮
+  # （工具调用 / 输出成对保留，最近部分不超过窗口的 keepRecentPercent%）。上下文窗口取上游模型目录，缺省 256000。
+  # 摘要按已压缩前缀的哈希缓存（内存 LRU），Codex 每轮重发全量历史时直接复用；摘要失败时退化为丢弃最早记录并加占位。
+  # 压缩发生在 maxUpstreamRequestBytes 检查之前，审计请求头 X-Grok2api-Context-Compacted、日志 context_compacted。
+  autoCompact:
+    enabled: true
+    thresholdPercent: 85
+    keepRecentTurns: 2
+    keepRecentPercent: 25
+    summaryMaxChars: 60000
+    reserveTokens: 32768
+    summaryTimeout: 4m
 
 auth:
   # [通常不要修改] 管理端访问与刷新令牌有效期。
