@@ -92,7 +92,7 @@ import {
   getContextWindowCatalog,
 } from "@/features/accounts/accounts-api";
 import { AccountNextReset } from "@/features/accounts/account-next-reset";
-import { AccountExpiry, AccountLastUsed } from "@/features/accounts/account-times";
+import { AccountExpiry, AccountLastUsed, AccountPlanExpiry } from "@/features/accounts/account-times";
 import { AccountQuota, ConsoleQuota, WebQuota } from "@/features/accounts/account-quota";
 import { AccountNameCell } from "@/features/accounts/account-name-cell";
 import { getAccountQualityFlags } from "@/features/quality-guard/quality-guard-api";
@@ -1559,7 +1559,7 @@ export function AccountsPage() {
 	                    <TableCell className="min-w-0"><AccountNameCell account={account} qualityFlag={qualityFlags.get(account.id)} /></TableCell>
                     <TableCell className="text-center whitespace-nowrap">{provider === "grok_web" ? <WebAccountType tier={account.webTier} /> : provider === "grok_console" ? <AccountTypeText label={t("accountType.console")} variant="free" /> : <AccountType quota={account.quota} planTier={account.planTier} planRaw={account.planRaw} />}</TableCell>
                     <TableCell className="text-center whitespace-nowrap"><AccountStatus account={account} /></TableCell>
-                    <TableCell className={provider === "grok_build" ? undefined : "px-6"}>{provider === "grok_web" ? <WebQuota windows={account.quotaWindows ?? []} locale={i18n.language} tier={account.webTier} /> : provider === "grok_console" ? <ConsoleQuota windows={account.quotaWindows ?? []} locale={i18n.language} /> : <AccountQuota quota={account.quota} billing={account.billing} locale={i18n.language} />}<AccountNextReset account={account} /><AccountExpiry account={account} /><AccountLastUsed account={account} />
+                    <TableCell className={provider === "grok_build" ? undefined : "px-6"}>{provider === "grok_web" ? <WebQuota windows={account.quotaWindows ?? []} locale={i18n.language} tier={account.webTier} /> : provider === "grok_console" ? <ConsoleQuota windows={account.quotaWindows ?? []} locale={i18n.language} /> : <AccountQuota quota={account.quota} billing={account.billing} locale={i18n.language} />}<AccountNextReset account={account} /><AccountPlanExpiry account={account} /><AccountExpiry account={account} /><AccountLastUsed account={account} />
                       {account.modelQuotaBlocks?.length ? (
                         <Tooltip>
                           <TooltipTrigger asChild><span tabIndex={0} className="mt-0.5 inline-block cursor-help rounded bg-amber-100 px-1.5 text-[11px] font-medium text-amber-800 dark:bg-amber-950 dark:text-amber-300">{t("accounts.modelBlocks", { count: account.modelQuotaBlocks.length })}</span></TooltipTrigger>
@@ -1913,6 +1913,7 @@ export function AccountsPage() {
               <div className="space-y-2"><Label htmlFor="account-concurrency">{t("accounts.maxConcurrent")}</Label><Input id="account-concurrency" type="number" min="1" max="256" {...form.register("maxConcurrent", { valueAsNumber: true })} /></div>
             </div>
             {editing ? <div className="flex items-center justify-between border-b py-2 text-sm"><span>{t("accounts.nextReset")}</span><AccountNextReset account={editing} showLabel={false} className="text-sm tabular-nums" /></div> : null}
+            {editing ? <div className="flex items-center justify-between border-b py-2 text-sm"><span>{t("accounts.planExpiry")}</span><AccountPlanExpiry account={editing} showLabel={false} className="w-fit text-sm tabular-nums" /></div> : null}
             {editing ? <div className="flex items-center justify-between border-b py-2 text-sm"><span>{t("accounts.expiry")}</span><AccountExpiry account={editing} showLabel={false} className="w-fit text-sm tabular-nums" /></div> : null}
             {editing ? <div className="flex items-center justify-between border-b py-2 text-sm"><span>{t("accounts.lastUsed")}</span><AccountLastUsed account={editing} showLabel={false} className="w-fit text-sm tabular-nums" /></div> : null}
             <div className="space-y-2"><Label htmlFor="account-minimum">{t("accounts.minimumRemaining")}</Label><Input id="account-minimum" type="number" min="0" step="0.01" {...form.register("minimumRemaining", { valueAsNumber: true })} /></div>

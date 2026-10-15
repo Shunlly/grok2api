@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { formatRelativeFuture, formatResetClock, formatTokenMillions } from "./format.ts";
+import { displayTimeZoneLabel, formatCompactDateTime, formatRelativeFuture, formatResetClock, formatTokenMillions } from "./format.ts";
 
 describe("formatTokenMillions", () => {
   it("uses a stable M suffix for large values", () => {
@@ -27,9 +27,13 @@ describe("formatRelativeFuture", () => {
     assert.equal(formatRelativeFuture(new Date("2026-10-17T04:00:00Z"), "en", now), "in 2 days");
     assert.equal(formatRelativeFuture("bad", "en", now), "-");
   });
-  it("formats a local clock", () => {
-    const local = new Date(2026, 9, 17, 8, 5);
-    assert.equal(formatResetClock(local), "10-17 08:05");
+  it("formats in the UTC+8 display zone regardless of the browser zone", () => {
+    // Regression: a browser on US Pacific showed 08:58Z as "10-15 01:58 · 4小时后" at 13:00 UTC+8.
+    assert.equal(formatResetClock("2026-10-15T08:58:56Z"), "10-15 16:58");
+    assert.equal(formatResetClock(new Date("2026-10-17T00:05:00Z")), "10-17 08:05");
+    assert.equal(formatResetClock("2026-10-15T16:30:00Z"), "10-16 00:30");
+    assert.equal(formatCompactDateTime("2026-10-15T08:58:56Z", "zh-CN"), "2026/10/15 16:58:56");
+    assert.equal(displayTimeZoneLabel(), "UTC+8");
     assert.equal(formatResetClock("bad"), "-");
   });
 });

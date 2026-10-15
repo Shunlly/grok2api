@@ -1,3 +1,35 @@
+/**
+ * Display time zone for the admin console. Browser local time is not reliable
+ * (e.g. a Mac whose system zone is US Pacific while the operator lives in
+ * UTC+8 rendered "10-15 01:58 · 4小时后" at 13:00 UTC+8). Default Asia/Shanghai;
+ * override with localStorage "grok2api.timeZone" (IANA name).
+ */
+export const DEFAULT_DISPLAY_TIME_ZONE = "Asia/Shanghai";
+
+let cachedTimeZone: string | undefined;
+
+export function displayTimeZone(): string {
+  if (cachedTimeZone) return cachedTimeZone;
+  let value = DEFAULT_DISPLAY_TIME_ZONE;
+  try {
+    const stored = globalThis.localStorage?.getItem("grok2api.timeZone")?.trim();
+    if (stored) {
+      new Intl.DateTimeFormat("en", { timeZone: stored });
+      value = stored;
+    }
+  } catch {
+    value = DEFAULT_DISPLAY_TIME_ZONE;
+  }
+  cachedTimeZone = value;
+  return value;
+}
+
+/** Short label such as "UTC+8" for the display time zone at the given instant. */
+export function displayTimeZoneLabel(at: Date = new Date()): string {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: displayTimeZone(), timeZoneName: "shortOffset" }).formatToParts(at);
+  return (parts.find((part) => part.type === "timeZoneName")?.value ?? "UTC").replace("GMT", "UTC");
+}
+
 const dateTimeFormatters = new Map<string, Intl.DateTimeFormat>();
 const compactDateTimeFormatters = new Map<string, Intl.DateTimeFormat>();
 const numberFormatters = new Map<string, Intl.NumberFormat>();
@@ -16,6 +48,8 @@ export function formatDateTime(value: string | null | undefined, locale: string)
     formatter = new Intl.DateTimeFormat(locale, {
       dateStyle: "medium",
       timeStyle: "short",
+      hourCycle: "h23",
+      timeZone: displayTimeZone(),
     });
     dateTimeFormatters.set(locale, formatter);
   }
@@ -32,7 +66,7 @@ export function formatCompactDateTime(value: string | null | undefined, locale: 
   }
   let formatter = compactDateTimeFormatters.get(locale);
   if (!formatter) {
-    formatter = new Intl.DateTimeFormat(locale, { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" });
+    formatter = new Intl.DateTimeFormat(locale, { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23", timeZone: displayTimeZone() });
     compactDateTimeFormatters.set(locale, formatter);
   }
   const parts = formatter.formatToParts(date);
@@ -81,15 +115,19 @@ export function toDateTimeLocal(value: string | null | undefined): string {
   return new Date(date.getTime() - offset).toISOString().slice(0, 19);
 }
 
-function pad2(value: number): string {
-  return String(value).padStart(2, "0");
-}
 
-/** 以浏览器本地时区格式化为 "MM-DD HH:mm"。 */
+/** 以控制台显示时区（默认 UTC+8）格式化为 "MM-DD HH:mm"，24 小时制。 */
 export function formatResetClock(value: string | Date): string {
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return "-";
-  return `${pad2(date.getMonth() + 1)}-${pad2(date.getDate())} ${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
+  const parts = resetClockFormatter().formatToParts(date);
+  return `${datePart(parts, "month")}-${datePart(parts, "day")} ${datePart(parts, "hour")}:${datePart(parts, "minute")}`;
+}
+
+let resetClock: Intl.DateTimeFormat | undefined;
+function resetClockFormatter(): Intl.DateTimeFormat {
+  resetClock ??= new Intl.DateTimeFormat("en-US", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: displayTimeZone() });
+  return resetClock;
 }
 
 /** 相对倒计时，例如 "1天后" / "in 1 day"；未来 1 小时内精确到分钟。 */

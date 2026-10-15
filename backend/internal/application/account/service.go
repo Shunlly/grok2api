@@ -196,6 +196,9 @@ type View struct {
 	ModelQuotaBlocks   []accountdomain.ModelQuotaBlock
 	BuildBotFlagged    bool
 	BuildBotFlagSource int
+	// Plan is the upstream consumer subscription snapshot (see attachPlanSubscriptions).
+	Plan       *accountdomain.PlanSubscription
+	PlanSource string
 	// EnabledChanged is request-scoped update metadata. It is not persisted or
 	// serialized directly; the HTTP layer uses it to avoid warning when a PATCH
 	// merely repeats the account's existing enabled value.
@@ -646,6 +649,7 @@ func (s *Service) List(ctx context.Context, page, pageSize int, search string, f
 		view.ModelQuotaBlocks = modelBlocks[value.ID]
 		views = append(views, view)
 	}
+	s.attachPlanSubscriptions(ctx, views)
 	return views, total, nil
 }
 
@@ -1094,7 +1098,9 @@ func (s *Service) Get(ctx context.Context, id uint64) (View, error) {
 	} else {
 		return View{}, err
 	}
-	return view, nil
+	single := []View{view}
+	s.attachPlanSubscriptions(ctx, single)
+	return single[0], nil
 }
 
 func (s *Service) credentialMetadata(value accountdomain.Credential) provider.CredentialMetadata {
@@ -3048,6 +3054,7 @@ func (s *Service) refreshQuota(ctx context.Context, id uint64) (quotaRefreshResu
 	if err := s.accounts.ReplaceQuotaWindows(ctx, id, snapshot.Tier, snapshot.SyncedAt, snapshot.Windows); err != nil {
 		return quotaRefreshResult{}, err
 	}
+	s.syncPlanSubscription(ctx, value, adapter)
 	return quotaRefreshResult{Credential: value, Windows: snapshot.Windows}, nil
 }
 
