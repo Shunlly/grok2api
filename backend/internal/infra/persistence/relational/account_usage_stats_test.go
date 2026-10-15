@@ -2,12 +2,14 @@ package relational
 
 import (
 	"context"
+
+	"github.com/chenyme/grok2api/backend/internal/repository"
 	"path/filepath"
 	"testing"
 	"time"
 )
 
-func TestRefreshAccountUsageStatsAccumulatesAcrossPurge(t *testing.T) {
+func TestRefreshAccountUsageStatsCoversCurrentPeriod(t *testing.T) {
 	ctx := context.Background()
 	database, err := OpenSQLite(ctx, filepath.Join(t.TempDir(), "usage.db"))
 	if err != nil {
@@ -40,32 +42,41 @@ func TestRefreshAccountUsageStatsAccumulatesAcrossPurge(t *testing.T) {
 		row("fail1", 502, today, 0, 0, 0, 0),
 	)
 	repo := NewAuditRepository(database)
-	got, err := repo.RefreshAccountUsageStats(ctx, 1, now)
+	periodStart := time.Date(2026, 10, 14, 15, 30, 0, 0, time.UTC) // 周期从 old1 之后开始
+	period := repository.UsagePeriod{Start: periodStart, End: periodStart.Add(7 * 24 * time.Hour), Source: "billingUsagePeriod"}
+	got, err := repo.RefreshAccountUsageStats(ctx, 1, period, now)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.TotalRequests != 3 || got.TotalFailedRequests != 1 || got.TotalTokens != 165 || got.TotalCostUSDTicks != 1300 || got.TotalUpstreamCostTicks != 1000 || got.TotalEstimatedTicks != 300 {
-		t.Fatalf("totals %+v", got)
+	if got.TotalRequests != 2 || got.TotalFailedRequests != 1 || got.TotalTokens != 55 || got.TotalCostUSDTicks != 300 || got.TotalEstimatedTicks != 300 {
+		t.Fatalf("period totals %+v", got)
+	}
+	if got.PeriodStart == nil || !got.PeriodStart.Equal(periodStart) || got.PeriodEnd == nil || got.PeriodSource != "billingUsagePeriod" {
+		t.Fatalf("period meta %+v", got)
 	}
 	if got.TodayDate != "2026-10-15" || got.TodayRequests != 2 || got.TodayTokens != 55 || got.TodayCostUSDTicks != 300 {
 		t.Fatalf("today %+v", got)
 	}
-	// 审计清理后累计值不回落，新请求继续累加；重复刷新不会重复计数。
-	if err := database.db.WithContext(ctx).Exec("DELETE FROM request_audits WHERE request_id = 'old1'").Error; err != nil {
-		t.Fatal(err)
-	}
+	// 重复刷新幂等；更早的周期包含 old1。
 	insert(row("today2", 200, today.Add(time.Minute), 10, 1, 7, 0))
+	wide := repository.UsagePeriod{Start: now.Add(-7 * 24 * time.Hour), Source: "rolling7d"}
 	for range 2 {
-		got, err = repo.RefreshAccountUsageStats(ctx, 1, now)
+		got, err = repo.RefreshAccountUsageStats(ctx, 1, wide, now.Add(2*time.Minute))
 		if err != nil {
 			t.Fatal(err)
 		}
 	}
-	if got.TotalRequests != 4 || got.TotalTokens != 176 || got.TotalCostUSDTicks != 1307 || got.TodayRequests != 3 {
-		t.Fatalf("after purge %+v", got)
+	if got.TotalRequests != 4 || got.TotalTokens != 176 || got.TotalCostUSDTicks != 1307 || got.PeriodEnd != nil {
+		t.Fatalf("wide %+v", got)
+	}
+	// 周期滚动：新周期内没有请求时归零。
+	rolled := repository.UsagePeriod{Start: now.Add(time.Hour), Source: "billingUsagePeriod"}
+	got, err = repo.RefreshAccountUsageStats(ctx, 1, rolled, now.Add(2*time.Hour))
+	if err != nil || got.TotalRequests != 0 || got.TotalCostUSDTicks != 0 {
+		t.Fatalf("rolled %+v %v", got, err)
 	}
 	stats, err := repo.AccountUsageStatsByAccounts(ctx, []uint64{1, 2})
-	if err != nil || len(stats) != 1 || stats[1].TotalRequests != 4 || stats[1].FirstAuditAt == nil {
+	if err != nil || len(stats) != 1 || stats[1].TotalRequests != 0 || stats[1].PeriodStart == nil {
 		t.Fatalf("lookup %+v %v", stats, err)
 	}
 }

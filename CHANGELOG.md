@@ -2,6 +2,14 @@
 
 Shunlly/grok2api fork of [chenyme/grok2api](https://github.com/chenyme/grok2api).
 
+## v3.4.4 — 2026-10-15
+
+### Changed
+- 账号用量统计改为只统计**当前额度周期**：「总请求 / 总Token / 总金额」改名为「周期请求 / 周期Token / 周期金额」，每次同步额度时按 `[周期开始, 现在]` 从 `request_audits` 重算（排除规则不变：探针、定时考题、内部 Key），周期滚动后自动归零。「今日金额」保持不变。
+- 周期来源优先级：Build 用上游 Billing `usage_period_start..usage_period_end`；Web/Console 用额度窗口 `reset_at − window_seconds .. reset_at`（多模式取窗口最长的）；都拿不到时回退为滚动 7 天。快照过期时按周期长度自动向前滚动。
+- 悬停提示显示周期起止（UTC+8）和来源。API `usageStats` 新增 `periodStart` / `periodEnd` / `periodSource`，`total*` 字段语义改为周期内用量。
+- 去掉 v3.4.2 的增量累计逻辑；`account_usage_stats` 旧列保留以兼容，`first_audit_at` 不再更新。
+
 ## v3.4.3 — 2026-10-15
 
 ### Changed

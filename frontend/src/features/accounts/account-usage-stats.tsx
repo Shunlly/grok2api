@@ -2,12 +2,12 @@ import { useTranslation } from "react-i18next";
 
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { AccountDTO } from "@/features/accounts/accounts-api";
-import { formatUsageCompact, formatUsageUSD, isTodayCurrent } from "@/features/accounts/account-usage-stats-format";
+import { formatUsageCompact, formatUsageUSD, isTodayCurrent, periodSourceKey } from "@/features/accounts/account-usage-stats-format";
 import { displayTimeZoneLabel, formatDateTime } from "@/shared/lib/format";
 
 const chip = "rounded bg-muted px-1.5 py-0.5 text-[11px] tabular-nums text-muted-foreground";
 
-/** 账号用量：总请求 / 总Token / 总金额 / 今日金额。快照只在同步额度时刷新。 */
+/** 账号用量：周期请求 / 总Token / 总金额 / 今日金额。快照只在同步额度时刷新。 */
 export function AccountUsageStats({ account, variant = "row" }: { account: Pick<AccountDTO, "usageStats">; variant?: "row" | "dialog" }) {
   const { t, i18n } = useTranslation();
   const stats = account.usageStats;
@@ -19,7 +19,8 @@ export function AccountUsageStats({ account, variant = "row" }: { account: Pick<
   const n = (v: number) => v.toLocaleString(i18n.language);
   const tooltip = (
     <div className="space-y-1 text-xs">
-      <div className="font-medium">{t("accounts.usageStats.tooltipTotal", { since: stats.firstAuditAt ? formatDateTime(stats.firstAuditAt, i18n.language) : "-" })}</div>
+      <div className="font-medium">{t("accounts.usageStats.tooltipPeriod", { start: stats.periodStart ? formatDateTime(stats.periodStart, i18n.language) : "-", end: stats.periodEnd ? formatDateTime(stats.periodEnd, i18n.language) : t("accounts.usageStats.periodNow"), zone: displayTimeZoneLabel() })}</div>
+      <div className="text-muted-foreground">{t(`accounts.usageStats.periodSource.${periodSourceKey(stats.periodSource)}`, { mode: stats.periodSource?.split(":")[1] ?? "" })}</div>
       <div>{t("accounts.usageStats.requests", { total: n(stats.totalRequests), failed: n(stats.totalFailedRequests) })}</div>
       <div>{t("accounts.usageStats.tokens", { input: n(stats.totalInputTokens), cached: n(stats.totalCachedInputTokens), output: n(stats.totalOutputTokens), reasoning: n(stats.totalReasoningTokens), total: n(stats.totalTokens) })}</div>
       <div>{t("accounts.usageStats.cost", { total: formatUsageUSD(stats.totalCostUsdTicks), upstream: formatUsageUSD(stats.totalUpstreamCostUsdTicks), estimated: formatUsageUSD(stats.totalEstimatedCostUsdTicks) })}</div>
@@ -33,7 +34,6 @@ export function AccountUsageStats({ account, variant = "row" }: { account: Pick<
       ) : <div className="text-amber-600 dark:text-amber-400">{t("accounts.usageStats.staleToday", { date: stats.todayDate })}</div>}
       <div className="pt-1 text-muted-foreground">{t("accounts.usageStats.costNote")}</div>
       <div className="text-muted-foreground">{t("accounts.usageStats.exclusion")}</div>
-      <div className="text-muted-foreground">{t("accounts.usageStats.retention")}</div>
       <div className="text-muted-foreground">{t("accounts.usageStats.computedAt", { time: `${formatDateTime(stats.computedAt, i18n.language)} (${displayTimeZoneLabel()})` })}</div>
     </div>
   );

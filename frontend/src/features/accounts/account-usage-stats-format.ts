@@ -19,3 +19,11 @@ export function formatUsageUSD(ticks: number): string {
   const value = (Number.isFinite(ticks) && ticks > 0 ? ticks : 0) / USD_TICKS_PER_DOLLAR;
   return `$${value.toFixed(2)}`;
 }
+
+/** 周期来源 → i18n key（无来源 = v3.4.2 旧版累计快照）。 */
+export function periodSourceKey(source?: string): "billing" | "window" | "rolling" | "legacy" {
+  if (source === "billingUsagePeriod") return "billing";
+  if (source?.startsWith("quotaWindow:")) return "window";
+  if (source === "rolling7d") return "rolling";
+  return "legacy";
+}

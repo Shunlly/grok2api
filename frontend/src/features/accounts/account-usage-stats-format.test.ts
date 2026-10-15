@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { formatUsageCompact, formatUsageUSD, isTodayCurrent, shanghaiDate } from "./account-usage-stats-format.ts";
+import { formatUsageCompact, formatUsageUSD, isTodayCurrent, periodSourceKey, shanghaiDate } from "./account-usage-stats-format.ts";
 
 describe("account usage stats format", () => {
   it("uses the Asia/Shanghai calendar day", () => {
@@ -19,5 +19,14 @@ describe("account usage stats format", () => {
     assert.equal(formatUsageCompact(1_600_000_000), "1.6B");
     assert.equal(formatUsageUSD(13_352_000_000_000), "$1335.20");
     assert.equal(formatUsageUSD(0), "$0.00");
+  });
+});
+
+describe("periodSourceKey", () => {
+  it("maps sources", () => {
+    assert.equal(periodSourceKey("billingUsagePeriod"), "billing");
+    assert.equal(periodSourceKey("quotaWindow:weekly"), "window");
+    assert.equal(periodSourceKey("rolling7d"), "rolling");
+    assert.equal(periodSourceKey(undefined), "legacy");
   });
 });
