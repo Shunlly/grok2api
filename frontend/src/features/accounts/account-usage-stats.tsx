@@ -16,6 +16,7 @@ export function AccountUsageStats({ account, variant = "row" }: { account: Pick<
   }
   const todayCurrent = isTodayCurrent(stats.todayDate);
   const todayCost = todayCurrent ? stats.todayCostUsdTicks : 0;
+  const todayFromReset = todayCurrent ? todayResetTime(stats.todayStart) : null;
   const n = (v: number) => v.toLocaleString(i18n.language);
   const tooltip = (
     <div className="space-y-1 text-xs">
@@ -27,6 +28,7 @@ export function AccountUsageStats({ account, variant = "row" }: { account: Pick<
       <div className="pt-1 font-medium">{t("accounts.usageStats.tooltipToday", { date: stats.todayDate })}</div>
       {todayCurrent ? (
         <>
+          {todayFromReset ? <div className="text-muted-foreground">{t("accounts.usageStats.todayFromReset", { time: todayFromReset })}</div> : null}
           <div>{t("accounts.usageStats.requests", { total: n(stats.todayRequests), failed: n(stats.todayFailedRequests) })}</div>
           <div>{t("accounts.usageStats.tokensToday", { input: n(stats.todayInputTokens), cached: n(stats.todayCachedInputTokens), output: n(stats.todayOutputTokens), total: n(stats.todayTokens) })}</div>
           <div>{t("accounts.usageStats.costToday", { total: formatUsageUSD(stats.todayCostUsdTicks) })}</div>
@@ -59,4 +61,13 @@ export function AccountUsageStats({ account, variant = "row" }: { account: Pick<
       <TooltipContent className="max-w-sm">{tooltip}</TooltipContent>
     </Tooltip>
   );
+}
+
+/** 今日起算点不是北京时间零点时（周期在今天重置），返回 HH:mm（北京时间）。 */
+function todayResetTime(todayStart?: string): string | null {
+  if (!todayStart) return null;
+  const date = new Date(todayStart);
+  if (Number.isNaN(date.getTime())) return null;
+  const hm = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Shanghai", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }).format(date);
+  return hm === "00:00:00" ? null : hm.slice(0, 5);
 }

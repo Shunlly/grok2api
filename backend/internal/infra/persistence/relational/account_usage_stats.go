@@ -39,6 +39,8 @@ type accountUsageStatsModel struct {
 	PeriodStart  *time.Time
 	PeriodEnd    *time.Time
 	PeriodSource string `gorm:"size:64;not null;default:''"`
+	// TodayStart：Today* 的起算时间 = max(北京时间当日零点, PeriodStart)，保证今日不超过本周期（v3.4.7）。
+	TodayStart *time.Time
 }
 
 func (accountUsageStatsModel) TableName() string { return "account_usage_stats" }
@@ -83,7 +85,7 @@ func (r *AuditRepository) aggregateUsage(tx *gorm.DB, accountID uint64, scope fu
 	return row, err
 }
 
-// RefreshAccountUsageStats 按账号当前额度周期 [period.Start, now] 从审计表重算周期用量，并重算今日（北京时间）用量。
+// RefreshAccountUsageStats 按账号当前额度周期 [period.Start, now] 从审计表重算周期用量，并重算今日用量（起点 = max(北京时间零点, period.Start)）。
 // 周期滚动后数值自然从 0 开始；旧版本的累计水位字段保留但不再参与计算。
 func (r *AuditRepository) RefreshAccountUsageStats(ctx context.Context, accountID uint64, period repository.UsagePeriod, now time.Time) (repository.AccountUsageStats, error) {
 	if accountID == 0 {
@@ -103,6 +105,10 @@ func (r *AuditRepository) RefreshAccountUsageStats(ctx context.Context, accountI
 	}
 	local := now.In(usageStatsZone)
 	dayStart := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, usageStatsZone).UTC()
+	// 今日只统计本周期内的部分：周期在今天重置时，从重置时间起算。
+	if periodStart.After(dayStart) {
+		dayStart = periodStart
+	}
 	today, err := r.aggregateUsage(tx, accountID, func(q *gorm.DB) *gorm.DB {
 		return q.Where("created_at >= ? AND created_at <= ?", dayStart, nowUTC)
 	})
@@ -116,7 +122,7 @@ func (r *AuditRepository) RefreshAccountUsageStats(ctx context.Context, accountI
 		LastAuditID: total.MaxID, TodayDate: local.Format("2006-01-02"), TodayRequests: today.Requests, TodayFailedRequests: today.Failed,
 		TodayInputTokens: today.InputTokens, TodayCachedInputTokens: today.CachedInputTokens, TodayOutputTokens: today.OutputTokens,
 		TodayTokens: today.Tokens, TodayCostUSDTicks: today.Cost, ComputedAt: nowUTC,
-		PeriodStart: &periodStart, PeriodSource: period.Source,
+		PeriodStart: &periodStart, PeriodSource: period.Source, TodayStart: &dayStart,
 	}
 	if !period.End.IsZero() {
 		end := period.End.UTC()
@@ -158,6 +164,6 @@ func usageStatsFromModel(m accountUsageStatsModel) repository.AccountUsageStats 
 		LastAuditID: m.LastAuditID, TodayDate: m.TodayDate, TodayRequests: m.TodayRequests, TodayFailedRequests: m.TodayFailedRequests,
 		TodayInputTokens: m.TodayInputTokens, TodayCachedInputTokens: m.TodayCachedInputTokens, TodayOutputTokens: m.TodayOutputTokens,
 		TodayTokens: m.TodayTokens, TodayCostUSDTicks: m.TodayCostUSDTicks, ComputedAt: m.ComputedAt.UTC(),
-		PeriodStart: m.PeriodStart, PeriodEnd: m.PeriodEnd, PeriodSource: m.PeriodSource,
+		PeriodStart: m.PeriodStart, PeriodEnd: m.PeriodEnd, PeriodSource: m.PeriodSource, TodayStart: m.TodayStart,
 	}
 }

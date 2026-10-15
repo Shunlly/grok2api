@@ -57,6 +57,9 @@ func TestRefreshAccountUsageStatsCoversCurrentPeriod(t *testing.T) {
 	if got.TodayDate != "2026-10-15" || got.TodayRequests != 2 || got.TodayTokens != 55 || got.TodayCostUSDTicks != 300 {
 		t.Fatalf("today %+v", got)
 	}
+	if got.TodayStart == nil || !got.TodayStart.Equal(time.Date(2026, 10, 14, 16, 0, 0, 0, time.UTC)) {
+		t.Fatalf("today start should be midnight %+v", got.TodayStart)
+	}
 	// 重复刷新幂等；更早的周期包含 old1。
 	insert(row("today2", 200, today.Add(time.Minute), 10, 1, 7, 0))
 	wide := repository.UsagePeriod{Start: now.Add(-7 * 24 * time.Hour), Source: "rolling7d"}
@@ -78,5 +81,49 @@ func TestRefreshAccountUsageStatsCoversCurrentPeriod(t *testing.T) {
 	stats, err := repo.AccountUsageStatsByAccounts(ctx, []uint64{1, 2})
 	if err != nil || len(stats) != 1 || stats[1].TotalRequests != 0 || stats[1].PeriodStart == nil {
 		t.Fatalf("lookup %+v %v", stats, err)
+	}
+}
+
+func TestRefreshAccountUsageStatsTodayClampedToPeriod(t *testing.T) {
+	ctx := context.Background()
+	database, err := OpenSQLite(ctx, filepath.Join(t.TempDir(), "usage.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if err := database.InitializeSchema(ctx); err != nil {
+		t.Fatal(err)
+	}
+	id := uint64(1)
+	mk := func(req string, at time.Time, cost int64) {
+		m := requestAuditModel{RequestID: req, ClientKeyID: 1, ModelRouteID: 1, Provider: "grok_build", Operation: "responses", UsageSource: "upstream", StatusCode: 200, AccountID: &id, CreatedAt: at, InputTokens: 10, TotalTokens: 10, CostInUSDTicks: cost}
+		if err := database.db.WithContext(ctx).Create(&m).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	// 北京时间 10-15：01:00 一条（上周期），周期 02:05 重置，03:00 一条（本周期）。
+	mk("before_reset", time.Date(2026, 10, 14, 17, 0, 0, 0, time.UTC), 1000)
+	mk("after_reset", time.Date(2026, 10, 14, 19, 0, 0, 0, time.UTC), 7)
+	repo := NewAuditRepository(database)
+	periodStart := time.Date(2026, 10, 14, 18, 5, 0, 0, time.UTC)
+	now := time.Date(2026, 10, 15, 7, 0, 0, 0, time.UTC)
+	got, err := repo.RefreshAccountUsageStats(ctx, 1, repository.UsagePeriod{Start: periodStart, Source: "billingUsagePeriod"}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.TodayRequests != 1 || got.TodayCostUSDTicks != 7 || got.TotalCostUSDTicks != 7 || got.TodayStart == nil || !got.TodayStart.Equal(periodStart) {
+		t.Fatalf("clamped today %+v", got)
+	}
+	// 周期早于今日零点：今日从零点起算。
+	got, err = repo.RefreshAccountUsageStats(ctx, 1, repository.UsagePeriod{Start: now.Add(-72 * time.Hour), Source: "rolling7d"}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	midnight := time.Date(2026, 10, 14, 16, 0, 0, 0, time.UTC)
+	if got.TodayRequests != 2 || got.TodayCostUSDTicks != 1007 || !got.TodayStart.Equal(midnight) {
+		t.Fatalf("midnight today %+v", got)
+	}
+	if got.TodayCostUSDTicks > got.TotalCostUSDTicks {
+		t.Fatalf("today exceeds period %+v", got)
 	}
 }

@@ -2,6 +2,13 @@
 
 Shunlly/grok2api fork of [chenyme/grok2api](https://github.com/chenyme/grok2api).
 
+## v3.4.7 — 2026-10-15
+
+### Changed
+- 账号「今日」用量（今日请求 / Token / 金额）改为只统计本周期内的部分：起算点 = max(北京时间当日零点, 周期开始)，今日数值不再超过周期数值。
+- 周期在今天重置时，悬停提示显示「今日从 HH:mm（周期重置）起算」。
+- 用量快照新增 `todayStart` 字段（接口 `usageStats.todayStart`）。
+
 ## v3.4.6 — 2026-10-15
 
 ### Added

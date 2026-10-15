@@ -96,7 +96,7 @@ func (h *Handler) applyUsageStats(ctx context.Context, items []accountResponse) 
 				TotalEstimatedTicks: v.TotalEstimatedTicks, FirstAuditAt: v.FirstAuditAt, TodayDate: v.TodayDate, TodayRequests: v.TodayRequests,
 				TodayFailedRequests: v.TodayFailedRequests, TodayInputTokens: v.TodayInputTokens, TodayCachedInputTokens: v.TodayCachedInputTokens,
 				TodayOutputTokens: v.TodayOutputTokens, TodayTokens: v.TodayTokens, TodayCostUSDTicks: v.TodayCostUSDTicks, ComputedAt: v.ComputedAt,
-				PeriodStart: v.PeriodStart, PeriodEnd: v.PeriodEnd, PeriodSource: v.PeriodSource,
+				PeriodStart: v.PeriodStart, PeriodEnd: v.PeriodEnd, PeriodSource: v.PeriodSource, TodayStart: v.TodayStart,
 			}
 		}
 	}
@@ -486,6 +486,7 @@ type usageStatsResponse struct {
 	ComputedAt             time.Time  `json:"computedAt"`
 	// Total* 覆盖的当前额度周期；PeriodEnd 为空表示滚动窗口。
 	PeriodStart  *time.Time `json:"periodStart,omitempty"`
+	TodayStart   *time.Time `json:"todayStart,omitempty"`
 	PeriodEnd    *time.Time `json:"periodEnd,omitempty"`
 	PeriodSource string     `json:"periodSource,omitempty"`
 }
