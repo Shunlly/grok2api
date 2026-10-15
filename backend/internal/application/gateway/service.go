@@ -995,7 +995,7 @@ func (s *Service) createResponseAt(ctx context.Context, input Input, path string
 	}
 	if st, compacted := s.maybeAutoCompact(ctx, &input, route.UpstreamModel); compacted {
 		auditBase.RequestHeaders = withCompactionAuditHeader(auditBase.RequestHeaders, st)
-		s.logger.Info("context_compacted", "request_id", input.RequestID, "model", publicModel, "window", st.Window, "threshold_tokens", st.Threshold, "before_tokens", st.BeforeTokens, "after_tokens", st.AfterTokens, "before_bytes", st.BeforeBytes, "after_bytes", st.AfterBytes, "items_compacted", st.ItemsCompacted, "cache_hit", st.CacheHit, "fallback", st.Fallback, "summary_chars", st.SummaryChars, "summary_ms", st.SummaryMS, "summary_error", st.SummaryError)
+		s.logger.Info("context_compacted", "request_id", input.RequestID, "model", publicModel, "window", st.Window, "threshold_tokens", st.Threshold, "before_tokens", st.BeforeTokens, "after_tokens", st.AfterTokens, "before_bytes", st.BeforeBytes, "after_bytes", st.AfterBytes, "items_compacted", st.ItemsCompacted, "cache_hit", st.CacheHit, "fallback", st.Fallback, "summary_chars", st.SummaryChars, "summary_ms", st.SummaryMS, "summary_error", st.SummaryError, "byte_pressure", st.BytePressure, "bytes_reduced", st.BytesReduced, "operation", input.Operation)
 	}
 	if tooLarge := s.checkUpstreamRequestSize(len(input.Body)); tooLarge != nil {
 		// Fail fast before any account lease or upstream call: xAI cannot process

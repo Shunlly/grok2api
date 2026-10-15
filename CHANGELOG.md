@@ -2,6 +2,15 @@
 
 Shunlly/grok2api fork of [chenyme/grok2api](https://github.com/chenyme/grok2api).
 
+## v3.5.3 — 2026-10-15
+
+### Fixed
+- 自动压缩只按 token 触发，Codex 会话里大量字节来自加密推理（`encrypted_content`）/ 最近截图等「字节多、token 估算少」的内容：v3.5.2 把 4.0 MB 请求压到约 10 万 token，但仍有 3.4 MB，结果 413，连 Codex 的 /compact 也 413。
+- 现在请求体超过 `maxUpstreamRequestBytes` 时也会触发压缩（`byte_pressure`），保留的最近部分同时受字节预算约束（≤ 限额 85% 的一半），已缓存摘要不满足字节目标时会增量重新摘要；仍超出时作为最后手段，去掉最后一条用户消息之前的图片 / 多模态和推理（reasoning）项。只有这样仍放不下才返回 413。
+- token 估算不再把长 base64 样式字符串（加密推理）当作图片，按实际长度计。
+- Codex `/compact`（compaction_trigger）、Grok TUI 压缩请求和 `/v1/responses/compact` 超过大小限制时也会先压缩再转发，不再直接 413（未超限时保持原样）。
+- `context_compacted` 日志新增 `byte_pressure`、`bytes_reduced`、`operation`。
+
 ## v3.5.2 — 2026-10-15
 
 ### Added

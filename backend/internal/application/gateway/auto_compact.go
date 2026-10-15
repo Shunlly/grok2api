@@ -140,8 +140,6 @@ func contextWindowForModel(upstreamModel string, fallback int) int {
 
 // ---- token estimation ----
 
-var base64ish = regexp.MustCompile(`^[A-Za-z0-9+/=_\-\s]+$`)
-
 // estimateTokens approximates input tokens (~4 bytes per token for text; inline
 // media counts as a fixed image cost instead of its base64 length).
 func estimateTokens(raw []byte) int {
@@ -168,7 +166,7 @@ func estimateNodeTokens(node any) int {
 		}
 		return total
 	case string:
-		if len(n) >= 1024 && (strings.HasPrefix(n, "data:") && strings.Contains(n[:min(len(n), 128)], ";base64,") || base64ish.MatchString(n[:min(len(n), 2048)]) && !strings.ContainsAny(n[:min(len(n), 2048)], " \n")) {
+		if len(n) >= 1024 && strings.HasPrefix(n, "data:") && strings.Contains(n[:min(len(n), 128)], ";base64,") {
 			return autoCompactImageTokens
 		}
 		return (len(n) + 3) / 4
@@ -181,6 +179,7 @@ func estimateNodeTokens(node any) int {
 
 type compactItem struct {
 	raw    json.RawMessage
+	bytes  int
 	tokens int
 	system bool
 	user   bool // genuine user turn start
@@ -188,7 +187,7 @@ type compactItem struct {
 }
 
 func classifyCompactItem(raw json.RawMessage) compactItem {
-	it := compactItem{raw: raw, tokens: estimateTokens(raw)}
+	it := compactItem{raw: raw, bytes: len(raw), tokens: estimateTokens(raw)}
 	var head struct {
 		Type    string          `json:"type"`
 		Role    string          `json:"role"`
@@ -272,6 +271,14 @@ func (p *compactPlan) chainKey(model string, k int) string {
 
 func (p *compactPlan) conv(k int) compactItem { return p.items[p.convIdx[k]] }
 
+func (p *compactPlan) suffixBytes(c int) int {
+	total := 0
+	for k := c; k < len(p.convIdx); k++ {
+		total += p.conv(k).bytes
+	}
+	return total
+}
+
 func (p *compactPlan) suffixTokens(c int) int {
 	total := 0
 	for k := c; k < len(p.convIdx); k++ {
@@ -292,7 +299,7 @@ func (p *compactPlan) lastUserConv() int {
 
 // chooseCut picks the first kept conversation index (> after). A valid cut never
 // starts on a tool output, so every kept output still follows its call.
-func (p *compactPlan) chooseCut(after, keepTurns, budget int) int {
+func (p *compactPlan) chooseCut(after, keepTurns, budget, byteBudget int) int {
 	n := len(p.convIdx)
 	turnStart := -1
 	seen := 0
@@ -315,7 +322,7 @@ func (p *compactPlan) chooseCut(after, keepTurns, budget int) int {
 			continue
 		}
 		last = c
-		if p.suffixTokens(c) <= budget {
+		if p.suffixTokens(c) <= budget && (byteBudget <= 0 || p.suffixBytes(c) <= byteBudget) {
 			return c
 		}
 	}
@@ -597,18 +604,35 @@ type compactStats struct {
 	SummaryChars              int
 	SummaryMS                 int64
 	SummaryError              string
+	BytePressure              bool
+	BytesReduced              int
 }
 
 func (st compactStats) auditValue() string {
-	return fmt.Sprintf("window=%d threshold=%d before_tokens=%d after_tokens=%d before_bytes=%d after_bytes=%d items_compacted=%d cache_hit=%t fallback=%t summary_chars=%d summary_ms=%d",
-		st.Window, st.Threshold, st.BeforeTokens, st.AfterTokens, st.BeforeBytes, st.AfterBytes, st.ItemsCompacted, st.CacheHit, st.Fallback, st.SummaryChars, st.SummaryMS)
+	return fmt.Sprintf("byte_pressure=%t bytes_reduced=%d window=%d threshold=%d before_tokens=%d after_tokens=%d before_bytes=%d after_bytes=%d items_compacted=%d cache_hit=%t fallback=%t summary_chars=%d summary_ms=%d",
+		st.BytePressure, st.BytesReduced, st.Window, st.Threshold, st.BeforeTokens, st.AfterTokens, st.BeforeBytes, st.AfterBytes, st.ItemsCompacted, st.CacheHit, st.Fallback, st.SummaryChars, st.SummaryMS)
 }
 
 type summarizeFunc func(ctx context.Context, transcript string) (string, error)
 
 // autoCompactBody returns the compacted body, or ok=false when no compaction applies.
 func autoCompactBody(ctx context.Context, body []byte, model string, window int, cfg AutoCompactConfig, cache *summaryCache, summarize summarizeFunc) ([]byte, compactStats, bool) {
+	return autoCompactBodyWithLimit(ctx, body, model, window, 0, cfg, cache, summarize)
+}
+
+// autoCompactBodyWithLimit also compacts under byte pressure: bodies above
+// byteLimit (the upstream size guard) are compacted even when the token
+// estimate is low (media / encrypted reasoning are byte-heavy but token-cheap),
+// and the kept tail is sized to fit the byte limit as well.
+func autoCompactBodyWithLimit(ctx context.Context, body []byte, model string, window int, byteLimit int, cfg AutoCompactConfig, cache *summaryCache, summarize summarizeFunc) ([]byte, compactStats, bool) {
 	cfg = cfg.normalized()
+	byteTarget := 0
+	if byteLimit > 0 {
+		byteTarget = byteLimit * 85 / 100
+	}
+	fits := func(tokens, size int) bool {
+		return tokens <= window*cfg.ThresholdPercent/100 && (byteTarget <= 0 || size <= byteTarget)
+	}
 	st := compactStats{Window: window, Threshold: window * cfg.ThresholdPercent / 100, BeforeBytes: len(body)}
 	if !cfg.Enabled || window <= 0 {
 		return body, st, false
@@ -618,7 +642,8 @@ func autoCompactBody(ctx context.Context, body []byte, model string, window int,
 		return body, st, false
 	}
 	st.BeforeTokens = p.totalTokens
-	if p.totalTokens <= st.Threshold || len(p.convIdx) < 2 {
+	st.BytePressure = byteLimit > 0 && len(body) > byteLimit
+	if (p.totalTokens <= st.Threshold && !st.BytePressure) || len(p.convIdx) < 2 {
 		return body, st, false
 	}
 	// 1. Reuse the longest cached summary prefix.
@@ -634,7 +659,7 @@ func autoCompactBody(ctx context.Context, body []byte, model string, window int,
 	}
 	if base > 0 {
 		if out, err := p.assemble(base, previous); err == nil {
-			if tokens := estimateTokens(out); tokens <= st.Threshold {
+			if tokens := estimateTokens(out); fits(tokens, len(out)) {
 				st.CacheHit, st.AfterTokens, st.AfterBytes, st.ItemsCompacted, st.SummaryChars = true, tokens, len(out), base, len(previous)
 				return out, st, true
 			}
@@ -642,7 +667,11 @@ func autoCompactBody(ctx context.Context, body []byte, model string, window int,
 	}
 	// 2. Summarize [base, cut) (carrying the previous summary forward).
 	budget := window * cfg.KeepRecentPercent / 100
-	cut := p.chooseCut(base, cfg.KeepRecentTurns, budget)
+	byteBudget := 0
+	if byteTarget > 0 {
+		byteBudget = byteTarget / 2
+	}
+	cut := p.chooseCut(base, cfg.KeepRecentTurns, budget, byteBudget)
 	if cut <= base || cut <= 0 {
 		return body, st, false
 	}
@@ -676,6 +705,14 @@ func autoCompactBody(ctx context.Context, body []byte, model string, window int,
 	out, aerr := p.assemble(cut, summary)
 	if aerr != nil {
 		return body, st, false
+	}
+	if byteTarget > 0 && len(out) > byteTarget {
+		// Last resort before 413: drop media and encrypted reasoning from the
+		// kept tail except the latest user message and the items after it.
+		if reduced, n := reduceKeptBytes(out); n > 0 {
+			out = reduced
+			st.BytesReduced = n
+		}
 	}
 	st.AfterTokens, st.AfterBytes, st.ItemsCompacted, st.SummaryChars = estimateTokens(out), len(out), cut, len(summary)
 	return out, st, true
@@ -743,11 +780,15 @@ func (s *Service) maybeAutoCompact(ctx context.Context, input *Input, upstreamMo
 	if !cfg.Enabled || input.skipAutoCompact || input.CanaryProbe || input.ForcedAccountID != 0 || input.PreviousResponseID != "" {
 		return compactStats{}, false
 	}
-	if input.Operation == audit.OperationCompaction || input.auditOperation == audit.OperationCompaction {
+	window := contextWindowForModel(upstreamModel, cfg.FallbackContextWindow)
+	limit := int(s.maxUpstreamRequestBytes.Load())
+	isCompaction := input.Operation == audit.OperationCompaction || input.auditOperation == audit.OperationCompaction
+	if isCompaction && (limit <= 0 || len(input.Body) <= limit) {
+		// Client compaction turns (Codex /compact, Grok TUI) summarize themselves;
+		// only intervene when the body would otherwise be rejected as too large.
 		return compactStats{}, false
 	}
-	window := contextWindowForModel(upstreamModel, cfg.FallbackContextWindow)
-	out, st, ok := autoCompactBody(ctx, input.Body, upstreamModel, window, cfg, s.autoCompactCache(), s.summarizeViaUpstream(*input, cfg.ReserveTokens))
+	out, st, ok := autoCompactBodyWithLimit(ctx, input.Body, upstreamModel, window, limit, cfg, s.autoCompactCache(), s.summarizeViaUpstream(*input, cfg.ReserveTokens))
 	if ok {
 		input.Body = out
 	}
@@ -761,4 +802,70 @@ func withCompactionAuditHeader(headers map[string][]string, st compactStats) map
 	}
 	out[autoCompactAuditHeader] = []string{st.auditValue()}
 	return out
+}
+
+// reduceKeptBytes strips inline media and drops reasoning items from every item
+// before the latest genuine user message (that message and everything after it
+// stay intact). Returns the new body and bytes saved.
+func reduceKeptBytes(body []byte) ([]byte, int) {
+	p, ok := parseCompactPlan(body)
+	if !ok {
+		return body, 0
+	}
+	lastUser := -1
+	for i := len(p.items) - 1; i >= 0; i-- {
+		if p.items[i].user {
+			lastUser = i
+			break
+		}
+	}
+	textType := "text"
+	if p.field == "input" {
+		textType = "input_text"
+	}
+	out := make([]json.RawMessage, 0, len(p.items))
+	changed := false
+	for i, it := range p.items {
+		if i >= lastUser || it.system {
+			out = append(out, it.raw)
+			continue
+		}
+		var v map[string]any
+		dec := json.NewDecoder(bytes.NewReader(it.raw))
+		dec.UseNumber()
+		if dec.Decode(&v) != nil {
+			out = append(out, it.raw)
+			continue
+		}
+		if t, _ := v["type"].(string); t == "reasoning" {
+			changed = true
+			continue
+		}
+		var st slimStats
+		if stripMedia(v, textType, &st) {
+			if enc, err := marshalNoEscape(v); err == nil {
+				out = append(out, enc)
+				changed = true
+				continue
+			}
+		}
+		out = append(out, it.raw)
+	}
+	if !changed {
+		return body, 0
+	}
+	encoded, err := marshalNoEscape(out)
+	if err != nil {
+		return body, 0
+	}
+	top := make(map[string]json.RawMessage, len(p.top))
+	for k, v := range p.top {
+		top[k] = v
+	}
+	top[p.field] = encoded
+	res, err := marshalNoEscape(top)
+	if err != nil || !json.Valid(res) || len(res) >= len(body) {
+		return body, 0
+	}
+	return res, len(body) - len(res)
 }
