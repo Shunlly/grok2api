@@ -392,6 +392,11 @@ type accountResponse struct {
 	ExpiresAutoRenew bool `json:"expiresAutoRenew,omitempty"`
 	// LastUsedSource: requestAudit（审计表最近成功真实请求，排除探针/考题）或 accountColumn（账号表 last_used_at，含探针）。
 	LastUsedSource string `json:"lastUsedSource,omitempty"`
+	// NoQuota：Console chat 额度窗口上限为 0（上游未授予额度），显示「无额度」而非待重置。
+	NoQuota bool `json:"noQuota,omitempty"`
+	// PlanTier / PlanRaw：Build 套餐展示标签（heavy/supergrok/lite/free/raw）与上游原始套餐名。
+	PlanTier string `json:"planTier,omitempty"`
+	PlanRaw  string `json:"planRaw,omitempty"`
 }
 
 type modelQuotaBlockResponse struct {
@@ -518,7 +523,7 @@ func (h *Handler) summary(c *gin.Context) {
 			string(accountdomain.ProviderWeb):     gin.H{"total": web.Total, "available": web.Available},
 			string(accountdomain.ProviderConsole): gin.H{"total": console.Total, "available": console.Available},
 		},
-		"recovery": gin.H{"cooldown": value.Recovery.Cooldown, "waitingReset": value.Recovery.WaitingReset, "probing": value.Recovery.Probing},
+		"recovery": gin.H{"cooldown": value.Recovery.Cooldown, "waitingReset": value.Recovery.WaitingReset, "probing": value.Recovery.Probing, "noQuota": value.Recovery.NoQuota},
 		"issues":   gin.H{"disabled": value.Issues.Disabled, "reauthRequired": value.Issues.ReauthRequired},
 	})
 }
@@ -1659,7 +1664,18 @@ func newAccountResponse(value accountapp.View) accountResponse {
 		billing := newBillingResponse(*value.Billing)
 		result.Billing = &billing
 	}
+	result.NoQuota = consoleNoQuota(result)
+	if value.Billing != nil {
+		result.PlanRaw = strings.TrimSpace(value.Billing.PlanName)
+		if result.PlanRaw == "" {
+			result.PlanRaw = strings.TrimSpace(value.Billing.PlanCode)
+		}
+		result.PlanTier = planTier(result.PlanRaw)
+	}
 	result.NextResetAt, result.NextResetSource = nextQuotaReset(result, time.Now())
+	if result.NoQuota {
+		result.NextResetAt, result.NextResetSource = nil, ""
+	}
 	result.ExpiresSource, result.ExpiresAutoRenew = credentialExpiry(result)
 	return result
 }
@@ -1804,4 +1820,42 @@ func (h *Handler) validateProviderIDs(c *gin.Context, ids []uint64, providerValu
 		return false
 	}
 	return true
+}
+
+// consoleNoQuota 判断 Console chat 额度窗口是否上限为 0（上游未授予额度）。
+func consoleNoQuota(value accountResponse) bool {
+	if value.Provider != string(accountdomain.ProviderConsole) {
+		return false
+	}
+	found := false
+	for _, window := range value.QuotaWindows {
+		if window.Mode != "console" {
+			continue
+		}
+		if window.Total > 0 {
+			return false
+		}
+		found = true
+	}
+	return found
+}
+
+// planTier 把上游套餐名（/user?include=subscription 或 JWT tier 回退值）归一为展示标签。
+// SuperGrokPro / SuperGrok Heavy -> heavy；SuperGrok -> supergrok；SuperGrok Lite -> lite；Free -> free；其他返回 raw。
+func planTier(raw string) string {
+	normalized := strings.NewReplacer(" ", "", "_", "", "-", "").Replace(strings.ToLower(strings.TrimSpace(raw)))
+	switch normalized {
+	case "":
+		return ""
+	case "supergrokpro", "supergrokheavy", "heavy":
+		return "heavy"
+	case "supergrok":
+		return "supergrok"
+	case "supergroklite", "lite":
+		return "lite"
+	case "free":
+		return "free"
+	default:
+		return "raw"
+	}
 }

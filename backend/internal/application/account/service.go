@@ -342,6 +342,8 @@ type RecoverySummary struct {
 	Cooldown     int64
 	WaitingReset int64
 	Probing      int64
+	// NoQuota 为上游额度上限为 0 的账号（如未充值的 Console），不计入 Recovering。
+	NoQuota int64
 }
 
 type IssueSummary struct {
@@ -365,6 +367,7 @@ func (s *Service) Summary(ctx context.Context) (Summary, error) {
 		result.Recovery.Cooldown += row.Cooldown
 		result.Recovery.WaitingReset += row.WaitingReset
 		result.Recovery.Probing += row.Probing
+		result.Recovery.NoQuota += row.NoQuota
 		result.Issues.Disabled += row.Disabled
 		result.Issues.ReauthRequired += row.ReauthRequired
 		result.Providers[row.Provider] = ProviderSummary{Total: row.Total, Available: row.Available}
@@ -559,7 +562,7 @@ func (s *Service) List(ctx context.Context, page, pageSize int, search string, f
 	egressMode, egressNodeID, egressSourceID, egressValid := parseEgressFilter(filter.Egress)
 	if (filter.Provider != "" && !accountdomain.Provider(filter.Provider).IsValid()) ||
 		!oneOf(filter.QuotaType, "", "free", "paid", "unknown", "auto", "basic", "super", "heavy") ||
-		!oneOf(filter.Status, "", "active", "disabled", "reauthRequired", "cooldown", "waitingReset", "probing") ||
+		!oneOf(filter.Status, "", "active", "disabled", "reauthRequired", "cooldown", "waitingReset", "noQuota", "probing") ||
 		!egressValid ||
 		!oneOf(filter.Renewal, "", "refreshable", "unrefreshable") ||
 		!oneOf(filter.Risk, "", "flagged", "normal") ||

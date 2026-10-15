@@ -125,6 +125,9 @@ export type AccountDTO = {
   expiresSource?: string;
   expiresAutoRenew?: boolean;
   lastUsedSource?: string;
+  noQuota?: boolean;
+  planTier?: string;
+  planRaw?: string;
   quotaWindows?: Array<{ mode: string; remaining: number; total: number; usagePercent: number; breakdown?: Array<{ productCode: number; usagePercent: number }>; windowSeconds: number; resetAt?: string; syncedAt?: string; source: "default" | "estimated" | "upstream" }>;
 };
 
@@ -156,7 +159,7 @@ export type AccountSummaryDTO = {
   attention: number;
   risk: number;
   providers: Record<AccountProvider, { total: number; available: number }>;
-  recovery: { cooldown: number; waitingReset: number; probing: number };
+  recovery: { cooldown: number; waitingReset: number; probing: number; noQuota?: number };
   issues: { disabled: number; reauthRequired: number };
 };
 
@@ -216,7 +219,7 @@ const accountValidator = hasShape({
   linkedAccountId: isOptional(isString), linkedAccountName: isOptional(isString), linkedProvider: isOptional(isOneOf("grok_build", "grok_web")), linkedAccounts: isOptional(isArrayOf(linkedAccountValidator)),
   createdAt: isString, billing: isOptional(billingValidator), quota: quotaValidator, quotaWindows: isOptional(isArrayOf(quotaWindowValidator)),
   modelQuotaBlocks: isOptional(isArrayOf(hasShape({ model: isString, reason: isString, cooldownUntil: isString }))),
-  nextResetAt: isOptional(isString), nextResetSource: isOptional(isString), expiresSource: isOptional(isString), expiresAutoRenew: isOptional(isBoolean), lastUsedSource: isOptional(isString),
+  nextResetAt: isOptional(isString), nextResetSource: isOptional(isString), expiresSource: isOptional(isString), expiresAutoRenew: isOptional(isBoolean), lastUsedSource: isOptional(isString), noQuota: isOptional(isBoolean), planTier: isOptional(isString), planRaw: isOptional(isString),
 });
 const decodeBilling = createValidatedDecoder<BillingDTO>("billing", billingValidator);
 const decodeAccount = createValidatedDecoder<AccountDTO>("account", accountValidator);
@@ -224,7 +227,7 @@ const decodeAccountPage = createPaginatedDecoder<AccountDTO>(accountValidator);
 const decodeAccountSummary = createObjectDecoder<AccountSummaryDTO>("account summary", {
   total: isNumber, available: isNumber, recovering: isNumber, attention: isNumber, risk: isNumber,
   providers: isRecordOf(hasShape({ total: isNumber, available: isNumber })),
-  recovery: hasShape({ cooldown: isNumber, waitingReset: isNumber, probing: isNumber }),
+  recovery: hasShape({ cooldown: isNumber, waitingReset: isNumber, probing: isNumber, noQuota: isOptional(isNumber) }),
   issues: hasShape({ disabled: isNumber, reauthRequired: isNumber }),
 });
 const decodeDeviceSession = createObjectDecoder<DeviceSessionDTO>("device session", {

@@ -114,7 +114,8 @@ func (a *Adapter) syncConsoleQuotas(ctx context.Context, credential account.Cred
 		var resetAt *time.Time
 		if mode == QuotaMode {
 			windowSeconds = int(consolePredictedChatRecoveryWindow / time.Second)
-			if quota.Remaining == 0 {
+			if quota.Remaining == 0 && quota.Limit > 0 {
+				// limit=0 表示上游未授予额度（无额度），不会自然恢复，不合成重置时间。
 				predicted := now.Add(consolePredictedChatRecoveryWindow)
 				resetAt = &predicted
 			}
