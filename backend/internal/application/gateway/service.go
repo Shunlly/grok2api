@@ -232,6 +232,7 @@ type Service struct {
 	modelSyncing                map[uint64]struct{}
 	markBuildChatDeniedAsReauth atomic.Bool
 	qualityRetry                atomic.Pointer[QualityRetryRuntime]
+	maxUpstreamRequestBytes     atomic.Int64
 }
 
 type teamModelRateLimit struct {
@@ -477,6 +478,14 @@ func (s *Service) SetLogger(logger *slog.Logger) {
 }
 
 func (s *Service) UpdateMaxAttempts(maxAttempts int) { s.maxAttempts.Store(int64(maxAttempts)) }
+
+// UpdateMaxUpstreamRequestBytes sets the generation request body guard; 0 disables it.
+func (s *Service) UpdateMaxUpstreamRequestBytes(limit int64) {
+	if limit < 0 {
+		limit = 0
+	}
+	s.maxUpstreamRequestBytes.Store(limit)
+}
 
 // UpdateVideoMaxAttempts configures create-phase account failover for video jobs.
 // 0 is treated as the general default pool size for legacy configs.
@@ -974,6 +983,22 @@ func (s *Service) createResponseAt(ctx context.Context, input Input, path string
 		}
 		return nil, clientkeyapp.ErrModelNotAllowed
 	}
+	if tooLarge := s.checkUpstreamRequestSize(len(input.Body)); tooLarge != nil {
+		// Fail fast before any account lease or upstream call: xAI cannot process
+		// bodies this large and would only time out behind Cloudflare.
+		record := auditBase
+		record.StatusCode = http.StatusRequestEntityTooLarge
+		record.DurationMS = time.Since(startedAt).Milliseconds()
+		record.ErrorCode = RequestTooLargeCode
+		record.CreatedAt = time.Now().UTC()
+		applyAuditEgress(&record, egressTrace, route.Provider)
+		if err := s.audits.Create(ctx, record); err != nil {
+			s.logger.Error("request_usage_write_failed", "event_id", record.EventID, "request_id", input.RequestID, "error", err)
+		}
+		s.logger.Warn("request_too_large_rejected", "request_id", input.RequestID, "bytes", tooLarge.Size, "limit", tooLarge.Limit, "model", publicModel)
+		return nil, tooLarge
+	}
+	largeRequest := len(input.Body) >= largeRequestHealthExemptBytes
 	affinityKey := ""
 	ownershipPromptCacheKey := ""
 	reasoningReplayKey := ""
@@ -1355,6 +1380,18 @@ attemptLoop:
 		if response.ModelCatalogChanged {
 			s.queueAccountModelSync(credential.ID)
 		}
+		if response.StatusCode == http.StatusUnauthorized && isSlowLargeRequestFailure(largeRequest, responseStartedAt) {
+			// A 401 that only arrives after minutes of uploading a huge body is an
+			// upstream/edge artifact, not proof the credential is bad. Return it
+			// without reauth, refresh, cooldown, or failover.
+			body, _ := readRetryableBody(response.Body)
+			lease.completeSelectorObservation(false)
+			lease.Release()
+			lastErr = fmt.Errorf("大请求慢速返回 401，跳过凭据失效处理")
+			lastFailure = newHTTPUpstreamFailure(http.StatusUnauthorized, body, credential.ID, credential.Name)
+			s.logger.Warn("upstream_slow_large_unauthorized_ignored", "request_id", input.RequestID, "account_id", credential.ID, "bytes", len(input.Body), "elapsed", time.Since(responseStartedAt))
+			break attemptLoop
+		}
 		if response.StatusCode == http.StatusUnauthorized {
 			response.Body.Close()
 			if credential.AuthType == accountdomain.AuthTypeSSO {
@@ -1397,6 +1434,14 @@ attemptLoop:
 					}
 				}
 				continue
+			}
+			if response.StatusCode == http.StatusUnauthorized && isSlowLargeRequestFailure(largeRequest, responseStartedAt) {
+				body, _ := readRetryableBody(response.Body)
+				lease.Release()
+				lastErr = fmt.Errorf("大请求慢速返回 401，跳过凭据失效处理")
+				lastFailure = newHTTPUpstreamFailure(http.StatusUnauthorized, body, credential.ID, credential.Name)
+				s.logger.Warn("upstream_slow_large_unauthorized_ignored", "request_id", input.RequestID, "account_id", credential.ID, "bytes", len(input.Body), "after_refresh", true)
+				break attemptLoop
 			}
 			if response.StatusCode == http.StatusUnauthorized {
 				body, _ := readRetryableBody(response.Body)
@@ -1567,6 +1612,10 @@ attemptLoop:
 			}
 			if !failureHandled && (lastFailure.AccountScoped || credential.Provider == accountdomain.ProviderBuild && response.StatusCode == http.StatusForbidden) {
 				s.selector.MarkFailure(ctx, credential, response.StatusCode, retryAfter)
+			} else if !lastFailure.AccountScoped && response.StatusCode >= http.StatusInternalServerError && largeRequest && lastFailure.Code == "upstream_cloudflare_error" {
+				// Cloudflare HTML 5xx on a huge body is caused by the request, not the
+				// account: do not cool the account down.
+				s.logger.Warn("upstream_large_request_cloudflare_no_cooldown", "request_id", input.RequestID, "account_id", credential.ID, "status", response.StatusCode, "bytes", len(input.Body))
 			} else if !lastFailure.AccountScoped && response.StatusCode >= http.StatusInternalServerError {
 				// Provider-wide 5xx responses should rotate this request and briefly
 				// isolate the account across requests, but must not grow the durable

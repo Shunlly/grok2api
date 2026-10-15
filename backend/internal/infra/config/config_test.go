@@ -529,7 +529,11 @@ func TestDurationStringUsesCompactYAMLForm(t *testing.T) {
 
 func TestValidateRejectsUnsafeRuntimeLimits(t *testing.T) {
 	tests := map[string]func(*Config){
-		"request body": func(cfg *Config) { cfg.Server.MaxBodyBytes = maxServerBodyBytes + 1 },
+		"request body":            func(cfg *Config) { cfg.Server.MaxBodyBytes = maxServerBodyBytes + 1 },
+		"upstream guard negative": func(cfg *Config) { cfg.Gateway.MaxUpstreamRequestBytes = -1 },
+		"upstream guard above body": func(cfg *Config) {
+			cfg.Gateway.MaxUpstreamRequestBytes = cfg.Server.MaxBodyBytes + 1
+		},
 		"audit buffer": func(cfg *Config) { cfg.Audit.BufferSize = maxAuditBufferSize + 1 },
 		"audit commit delay": func(cfg *Config) {
 			cfg.Audit.CommitDelay = Duration(maxAuditCommitDelay + time.Millisecond)

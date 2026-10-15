@@ -2316,7 +2316,10 @@ func writeGatewayError(c *gin.Context, err error) {
 	message := "上游服务暂不可用"
 	var upstreamFailure *gateway.UpstreamFailure
 	var selectionFailure *gateway.SelectionUnavailableError
+	var tooLarge *gateway.RequestTooLargeError
 	switch {
+	case errors.As(err, &tooLarge):
+		status, code, message = http.StatusRequestEntityTooLarge, gateway.RequestTooLargeCode, tooLarge.Error()
 	case errors.Is(err, gateway.ErrLedgerUnavailable):
 		status, code = http.StatusServiceUnavailable, "ledger_unavailable"
 		message = gateway.ErrLedgerUnavailable.Error()
@@ -2370,7 +2373,10 @@ func writeGatewayAnthropicError(c *gin.Context, err error) {
 	clientCode := ""
 	var upstreamFailure *gateway.UpstreamFailure
 	var selectionFailure *gateway.SelectionUnavailableError
+	var tooLarge *gateway.RequestTooLargeError
 	switch {
+	case errors.As(err, &tooLarge):
+		status, errorType, clientCode, message = http.StatusRequestEntityTooLarge, "request_too_large", gateway.RequestTooLargeCode, tooLarge.Error()
 	case errors.Is(err, gateway.ErrLedgerUnavailable):
 		status, errorType = http.StatusServiceUnavailable, "overloaded_error"
 		message = gateway.ErrLedgerUnavailable.Error()
