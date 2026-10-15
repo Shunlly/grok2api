@@ -150,3 +150,44 @@ func TestSlimmingCapsLatestToolOutputs(t *testing.T) {
 		t.Fatalf("general output len %d", n)
 	}
 }
+
+// codexHeavyBody mimics the failing Codex session: modest text tokens but
+// megabytes of encrypted reasoning blobs and recent screenshots.
+func codexHeavyBody(turns int, trigger bool) []byte {
+	items := []any{map[string]any{"type": "message", "role": "developer", "content": "rules"}}
+	enc := "gAAAAB" + strings.Repeat("Zm9vYmFy", 12000) // ~96KB base64
+	img := "data:image/png;base64," + strings.Repeat("iVBORw0K", 40000)
+	for i := 0; i < turns; i++ {
+		id := "call_" + strings.Repeat("x", i+1)
+		items = append(items,
+			map[string]any{"type": "message", "role": "user", "content": []any{map[string]any{"type": "input_text", "text": "step"}, map[string]any{"type": "input_image", "image_url": img}}},
+			map[string]any{"type": "reasoning", "summary": []any{}, "encrypted_content": enc},
+			map[string]any{"type": "function_call", "call_id": id, "name": "exec_command", "arguments": "{}"},
+			map[string]any{"type": "function_call_output", "call_id": id, "output": strings.Repeat("log line ", 1000)},
+		)
+	}
+	if trigger {
+		items = append(items, map[string]any{"type": "compaction_trigger"})
+	}
+	body, _ := json.Marshal(map[string]any{"model": "m", "input": items})
+	return body
+}
+
+func TestAutoCompactBytePressure(t *testing.T) {
+	for _, trigger := range []bool{false, true} {
+		body := codexHeavyBody(12, trigger)
+		limit := 5 << 19
+		if len(body) <= limit {
+			t.Fatalf("repro too small %d", len(body))
+		}
+		cfg := AutoCompactConfig{Enabled: true}
+		out, st, ok := autoCompactBodyWithLimit(context.Background(), body, "m", 256000, limit, cfg, newSummaryCache(4), func(context.Context, string) (string, error) { return "sum", nil })
+		if !ok || len(out) > limit || !st.BytePressure {
+			t.Fatalf("trigger=%v not under limit: ok=%v len=%d st=%+v", trigger, ok, len(out), st)
+		}
+		items := checkPairs(t, out)
+		if trigger && items[len(items)-1]["type"] != "compaction_trigger" {
+			t.Fatal("compaction trigger not kept last")
+		}
+	}
+}
