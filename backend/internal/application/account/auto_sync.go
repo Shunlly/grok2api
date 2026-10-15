@@ -89,3 +89,19 @@ func earliestReset(values []time.Time) (time.Time, bool) {
 	}
 	return best, !best.IsZero()
 }
+
+// AutoSyncSupported reports whether the scheduled quota sync covers accounts
+// of this provider (billing or remote-window quota).
+func (s *Service) AutoSyncSupported(providerValue string) bool {
+	if s == nil || s.providers == nil {
+		return false
+	}
+	for _, p := range s.providers.Providers() {
+		if string(p) != providerValue {
+			continue
+		}
+		kind, ok := s.providers.QuotaKind(p)
+		return ok && (kind == provider.QuotaBilling || kind == provider.QuotaRemoteWindow)
+	}
+	return false
+}

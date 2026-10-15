@@ -202,7 +202,7 @@ func (s *Selector) planCandidateIndexesWithHints(ctx context.Context, values []a
 			webCatalogSupport: candidate.Credential.Provider == account.ProviderWeb && len(tierOrder) > 0 && webTierInOrder(tierOrder, candidate.Credential.WebTier),
 			preferFreeBuild:   preferFreeBuild && candidate.IsKnownFreeBuild(),
 			inFlight:          inFlight[position], lastSelected: s.lastSelectedAt[candidate.Credential.ID],
-			poolNearlyUsed:    usagePoolNearlyExhausted(candidate, now),
+			poolNearlyUsed: usagePoolNearlyExhausted(candidate, now),
 		}
 		// 只有真实上游快照能够证明账号具备该模式额度。历史默认值和
 		// 本地预测值都属于未知能力，只保留为路由兜底。

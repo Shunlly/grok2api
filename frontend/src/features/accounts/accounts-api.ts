@@ -121,6 +121,11 @@ export type AccountDTO = {
   quota: QuotaDTO;
   modelQuotaBlocks?: Array<{ model: string; reason: string; cooldownUntil: string }>;
   nextResetAt?: string;
+  /** 最近一次上游额度/账单同步；下次刷新 = min(下次定时, 本账号重置后补同步)。 */
+  lastQuotaSyncAt?: string;
+  nextQuotaSyncAt?: string;
+  nextQuotaSyncReason?: string;
+  resetQuotaSyncAt?: string;
   nextResetSource?: string;
   expiresSource?: string;
   expiresAutoRenew?: boolean;
@@ -245,7 +250,7 @@ const accountValidator = hasShape({
   linkedAccountId: isOptional(isString), linkedAccountName: isOptional(isString), linkedProvider: isOptional(isOneOf("grok_build", "grok_web")), linkedAccounts: isOptional(isArrayOf(linkedAccountValidator)),
   createdAt: isString, billing: isOptional(billingValidator), quota: quotaValidator, quotaWindows: isOptional(isArrayOf(quotaWindowValidator)),
   modelQuotaBlocks: isOptional(isArrayOf(hasShape({ model: isString, reason: isString, cooldownUntil: isString }))),
-  nextResetAt: isOptional(isString), nextResetSource: isOptional(isString), expiresSource: isOptional(isString), expiresAutoRenew: isOptional(isBoolean), lastUsedSource: isOptional(isString), noQuota: isOptional(isBoolean), planTier: isOptional(isString), planRaw: isOptional(isString), planExpiresAt: isOptional(isString), planExpiresSource: isOptional(isString), planAutoRenew: isOptional(isBoolean), planCancelAtPeriodEnd: isOptional(isBoolean), planStatus: isOptional(isString), planName: isOptional(isString), planBillingInterval: isOptional(isString), planSyncedAt: isOptional(isString), planNoSubscription: isOptional(isBoolean), usageStats: isOptional(usageStatsValidator),
+  nextResetAt: isOptional(isString), lastQuotaSyncAt: isOptional(isString), nextQuotaSyncAt: isOptional(isString), nextQuotaSyncReason: isOptional(isString), resetQuotaSyncAt: isOptional(isString), nextResetSource: isOptional(isString), expiresSource: isOptional(isString), expiresAutoRenew: isOptional(isBoolean), lastUsedSource: isOptional(isString), noQuota: isOptional(isBoolean), planTier: isOptional(isString), planRaw: isOptional(isString), planExpiresAt: isOptional(isString), planExpiresSource: isOptional(isString), planAutoRenew: isOptional(isBoolean), planCancelAtPeriodEnd: isOptional(isBoolean), planStatus: isOptional(isString), planName: isOptional(isString), planBillingInterval: isOptional(isString), planSyncedAt: isOptional(isString), planNoSubscription: isOptional(isBoolean), usageStats: isOptional(usageStatsValidator),
 });
 const decodeBilling = createValidatedDecoder<BillingDTO>("billing", billingValidator);
 const decodeAccount = createValidatedDecoder<AccountDTO>("account", accountValidator);

@@ -2,6 +2,16 @@
 
 Shunlly/grok2api fork of [chenyme/grok2api](https://github.com/chenyme/grok2api).
 
+## v3.4.6 — 2026-10-15
+
+### Added
+- 账号列表和编辑框新增「额度刷新」提示：`上次同步 HH:mm · 下次刷新 HH:mm`；下次刷新取「下次定时同步」与「本账号重置后补同步」中较早的一个，后者标注「（重置后刷新）」。悬停说明定时间隔、重置后约 90 秒补同步、本账号重置后刷新时间，时间为 UTC+8。
+- 自动同步关闭、账号停用、需重新登录或类型不支持时，直接显示对应原因而不是时间。
+- 账号接口新增 `lastQuotaSyncAt`、`nextQuotaSyncAt`、`nextQuotaSyncReason`（hourly / reset / autoSyncDisabled / accountDisabled / reauthRequired / unsupported）和 `resetQuotaSyncAt`。
+
+### Fixed
+- 重置补同步时间按账号单独计算（调度器已登记的边界优先，未登记时用 `nextResetAt` + 90 秒），晚于下一次定时同步的也会显示，不再只在早于定时同步时才可见。
+
 ## v3.4.5 — 2026-10-15
 
 ### Added

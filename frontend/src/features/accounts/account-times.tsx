@@ -1,8 +1,10 @@
 import { useTranslation } from "react-i18next";
+import { useQuery } from "@tanstack/react-query";
 
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import type { AccountDTO } from "@/features/accounts/accounts-api";
+import { getQuotaAutoSyncStatus, type AccountDTO } from "@/features/accounts/accounts-api";
 import { credentialIssues, expiryState } from "@/features/accounts/account-expiry";
+import { quotaSyncHintText } from "@/features/accounts/account-quota-sync-hint";
 import { displayTimeZoneLabel, formatDateTime, formatRelativeFuture, formatResetClock } from "@/shared/lib/format";
 
 function TimeLine({ label, at, source, className, tone, emptyHint }: { label: string; at?: string; source?: string; className?: string; tone?: string; emptyHint?: string }) {
@@ -91,4 +93,37 @@ export function AccountLastUsed({ account, showLabel = true, className }: { acco
   const { t } = useTranslation();
   const source = account.lastUsedSource ? t(`accounts.lastUsedSource.${account.lastUsedSource}`, { defaultValue: account.lastUsedSource }) : "";
   return <TimeLine label={showLabel ? `${t("accounts.lastUsed")} ` : ""} at={account.lastUsedAt} source={source} className={className} />;
+}
+
+/** 本地时钟：同一天只显示 HH:mm，否则 MM-DD HH:mm（UTC+8）。 */
+function compactClock(value: string, now: Date = new Date()): string {
+  const full = formatResetClock(value);
+  return full.slice(0, 5) === formatResetClock(now).slice(0, 5) ? full.slice(6) : full;
+}
+
+
+/** 额度刷新：上次同步 · 下次刷新（定时 / 重置后），tooltip 说明同步规则。 */
+export function AccountQuotaSyncHint({ account, className }: { account: Pick<AccountDTO, "lastQuotaSyncAt" | "nextQuotaSyncAt" | "nextQuotaSyncReason" | "resetQuotaSyncAt">; className?: string }) {
+  const { t, i18n } = useTranslation();
+  const status = useQuery({ queryKey: ["accounts", "auto-sync-status"], queryFn: getQuotaAutoSyncStatus, refetchInterval: 60_000, staleTime: 30_000 }).data;
+  const text = quotaSyncHintText(account, t as never, (value) => compactClock(value));
+  const lines: string[] = [];
+  if (status?.enabled) {
+    lines.push(t("accounts.quotaSyncHint.tipHourly", { minutes: Math.round(status.intervalSeconds / 60) }));
+    lines.push(t("accounts.quotaSyncHint.tipReset", { seconds: 90 }));
+  } else if (status) {
+    lines.push(t("accounts.quotaSyncHint.autoSyncDisabled"));
+  }
+  if (account.resetQuotaSyncAt) lines.push(t("accounts.quotaSyncHint.tipResetAt", { time: formatDateTime(account.resetQuotaSyncAt, i18n.language) }));
+  lines.push(t("accounts.quotaSyncHint.tipManual"), t("accounts.quotaSyncHint.tipZone"));
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <div className={className ?? "mt-1 w-fit cursor-help text-[11px] tabular-nums text-muted-foreground"}>{text}</div>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-xs">
+        <div className="space-y-0.5 text-xs">{lines.map((line) => <div key={line}>{line}</div>)}</div>
+      </TooltipContent>
+    </Tooltip>
+  );
 }

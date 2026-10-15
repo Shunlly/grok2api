@@ -92,3 +92,18 @@ func TestRunDisabledReturnsImmediately(t *testing.T) {
 		t.Fatal("disabled scheduler should be a no-op")
 	}
 }
+
+func TestPendingResetSyncsIncludesBoundariesAfterNextFullRun(t *testing.T) {
+	now := time.Date(2026, 10, 15, 9, 0, 0, 0, time.UTC)
+	late := now.Add(5 * time.Hour)
+	f := &fakeAccounts{targets: []accountapp.AutoSyncTarget{{ID: 1}, {ID: 2}}, resets: map[uint64]time.Time{1: late, 2: now.Add(-time.Minute)}}
+	s := newTestService(f, now)
+	s.RunOnce(context.Background(), "scheduled", nil)
+	pending := s.PendingResetSyncs()
+	if got, ok := pending[1]; !ok || !got.Equal(late.Add(90*time.Second)) {
+		t.Fatalf("pending=%v", pending)
+	}
+	if _, ok := pending[2]; ok {
+		t.Fatalf("handled boundary should be omitted: %v", pending)
+	}
+}

@@ -159,7 +159,7 @@ func New(deps Dependencies) *gin.Engine {
 	adminProtected := adminRoot.Group("")
 	adminProtected.Use(middleware.AdminAuth(deps.AdminAuth))
 	authHandler.RegisterAuthenticated(adminProtected)
-	accounthttp.NewHandler(deps.Accounts, deps.AccountSync).WithLastUse(deps.AccountLastUse).WithModels(deps.AccountModels).Register(adminProtected)
+	accounthttp.NewHandler(deps.Accounts, deps.AccountSync).WithLastUse(deps.AccountLastUse).WithModels(deps.AccountModels).WithQuotaSync(quotaSyncSchedule(deps.QuotaAutoSync)).Register(adminProtected)
 	modelhttp.NewHandler(deps.Models).Register(adminProtected)
 	clientkeyhttp.NewHandler(deps.ClientKeys).Register(adminProtected)
 	auditHandler := audithttp.NewHandler(deps.Audits)
@@ -211,4 +211,12 @@ func New(deps Dependencies) *gin.Engine {
 	inferenceHandler.Register(v1)
 	registerFrontend(router, deps.FrontendStaticPath)
 	return router
+}
+
+// quotaSyncSchedule avoids a typed-nil interface when auto sync is not wired.
+func quotaSyncSchedule(s *quotasyncapp.Service) accounthttp.QuotaSyncSchedule {
+	if s == nil {
+		return nil
+	}
+	return s
 }
