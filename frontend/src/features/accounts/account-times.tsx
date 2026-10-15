@@ -2,7 +2,7 @@ import { useTranslation } from "react-i18next";
 
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { AccountDTO } from "@/features/accounts/accounts-api";
-import { expiryState } from "@/features/accounts/account-expiry";
+import { credentialIssues, expiryState } from "@/features/accounts/account-expiry";
 import { displayTimeZoneLabel, formatDateTime, formatRelativeFuture, formatResetClock } from "@/shared/lib/format";
 
 function TimeLine({ label, at, source, className, tone, emptyHint }: { label: string; at?: string; source?: string; className?: string; tone?: string; emptyHint?: string }) {
@@ -32,15 +32,34 @@ function TimeLine({ label, at, source, className, tone, emptyHint }: { label: st
   );
 }
 
-/** 凭证过期（Access Token）：显示时区（默认 UTC+8）+ 相对时间；已过期红色、3 天内琥珀色；未知显示 "-"。 */
-export function AccountExpiry({ account, showLabel = true, className }: { account: Pick<AccountDTO, "expiresAt" | "expiresSource" | "expiresAutoRenew">; showLabel?: boolean; className?: string }) {
-  const { t } = useTranslation();
-  const state = expiryState(account.expiresAt, account.expiresAutoRenew);
-  const tone = state === "expired" ? "font-medium text-red-600 dark:text-red-400" : state === "soon" ? "font-medium text-amber-600 dark:text-amber-400" : undefined;
-  const parts: string[] = [];
-  if (account.expiresSource) parts.push(t(`accounts.expiresSource.${account.expiresSource}`, { defaultValue: account.expiresSource }));
-  if (account.expiresAutoRenew) parts.push(t("accounts.expiresAutoRenew"));
-  return <TimeLine label={showLabel ? `${t("accounts.expiry")} ` : ""} at={account.expiresAt} source={parts.join(" · ")} className={className} tone={tone} emptyHint={t("accounts.expiryUnknownHint")} />;
+type CredentialFields = Pick<AccountDTO, "authType" | "authStatus" | "refreshable" | "refreshFailureCount" | "expiresAt" | "lastRefreshAt" | "lastRefreshErrorStatus" | "lastRefreshErrorCode" | "lastRefreshErrorMessage">;
+
+/**
+ * 凭证需重新登录：只在凭证无法自动续期时出现（无 refresh token / 续期失败 / 已过期未续上）。
+ * authStatus=reauthRequired 时状态列已有「需重新登录」徽章，这里不重复显示。
+ */
+export function AccountCredentialWarning({ account, className }: { account: CredentialFields; className?: string }) {
+  const { t, i18n } = useTranslation();
+  if (account.authStatus === "reauthRequired") return null;
+  const issues = credentialIssues(account);
+  if (!issues.length) return null;
+  const lastError = [account.lastRefreshErrorStatus, account.lastRefreshErrorCode, account.lastRefreshErrorMessage].filter(Boolean).join(" · ");
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span tabIndex={0} className={className ?? "mt-1 inline-block w-fit cursor-help rounded bg-amber-100 px-1.5 text-[11px] font-medium text-amber-800 dark:bg-amber-950 dark:text-amber-300"}>{t("accounts.credentialWarning.badge")}</span>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-xs">
+        <div className="space-y-0.5 text-xs">
+          {issues.map((issue) => <div key={issue}>{t(`accounts.credentialWarning.reasons.${issue}`)}</div>)}
+          <div>{t("accounts.credentialWarning.failures", { count: account.refreshFailureCount })}</div>
+          {lastError ? <div className="break-words">{t("accounts.credentialWarning.lastError", { error: lastError })}</div> : null}
+          {account.lastRefreshAt ? <div>{t("accounts.credentialWarning.lastRefresh", { time: formatDateTime(account.lastRefreshAt, i18n.language) })}</div> : null}
+          <div>{t("accounts.credentialWarning.expiresAt", { time: account.expiresAt ? `${formatDateTime(account.expiresAt, i18n.language)} (${displayTimeZoneLabel()})` : "-" })}</div>
+        </div>
+      </TooltipContent>
+    </Tooltip>
+  );
 }
 
 type PlanFields = Pick<AccountDTO, "provider" | "planExpiresAt" | "planExpiresSource" | "planAutoRenew" | "planCancelAtPeriodEnd" | "planStatus" | "planName" | "planBillingInterval" | "planSyncedAt" | "planNoSubscription">;
