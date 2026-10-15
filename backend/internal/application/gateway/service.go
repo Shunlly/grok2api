@@ -233,6 +233,7 @@ type Service struct {
 	markBuildChatDeniedAsReauth atomic.Bool
 	qualityRetry                atomic.Pointer[QualityRetryRuntime]
 	maxUpstreamRequestBytes     atomic.Int64
+	requestSlimming             requestSlimmingState
 }
 
 type teamModelRateLimit struct {
@@ -983,6 +984,12 @@ func (s *Service) createResponseAt(ctx context.Context, input Input, path string
 		}
 		return nil, clientkeyapp.ErrModelNotAllowed
 	}
+	identityBody := input.Body
+	if slimmed, stats := slimRequestBody(input.Body, s.requestSlimmingConfig()); stats.changed() {
+		input.Body = slimmed
+		auditBase.RequestHeaders = withSlimmingAuditHeader(auditBase.RequestHeaders, stats)
+		s.logger.Info("request_slimmed", "request_id", input.RequestID, "model", publicModel, "original_bytes", stats.OriginalBytes, "slimmed_bytes", stats.SlimmedBytes, "images_removed", stats.ImagesRemoved, "outputs_trimmed", stats.OutputsTrimmed, "output_bytes_omitted", stats.BytesTrimmed)
+	}
 	if tooLarge := s.checkUpstreamRequestSize(len(input.Body)); tooLarge != nil {
 		// Fail fast before any account lease or upstream call: xAI cannot process
 		// bodies this large and would only time out behind Cloudflare.
@@ -1019,7 +1026,7 @@ func (s *Service) createResponseAt(ctx context.Context, input Input, path string
 				route.UpstreamModel,
 				input.PromptCacheKey,
 				input.PromptCacheSeed,
-				input.Body,
+				identityBody,
 			)
 		}
 		identity = ensureBuildComposerSessionIdentity(identity, input.ClientKey.ID, route.Provider, route.UpstreamModel, requestSessionScope)
