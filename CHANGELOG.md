@@ -2,6 +2,17 @@
 
 Shunlly/grok2api fork of [chenyme/grok2api](https://github.com/chenyme/grok2api).
 
+## v3.4.9 — 2026-10-15
+
+### Added
+- 请求瘦身 `gateway.requestSlimming`（默认开启）：生成类请求转发给 xAI 之前，只保留最近 `keepImageTurns`（默认 2）轮用户对话里的图片，更早的图片（Responses `input_image`、Chat `image_url`、Anthropic `image`，含工具结果里的图片）替换为文字「[图片已省略 / image omitted to save context]」；早于最近 `keepToolOutputTurns`（默认 2）轮、超过 16KB 的工具输出只保留开头 6KB + 结尾 4KB，中间标注「[中间 N 字节已省略]」。最新一轮永不改动。
+- 瘦身在 3 MiB 请求体保护之前执行，保护检查的是瘦身后的大小；条目顺序、call_id 配对、加密 reasoning 条目保持不变；输出是请求体的确定性函数，同一历史前缀在多次请求间保持一致。
+- 日志 `request_slimmed` 记录原始/瘦身后字节、移除图片数、截断输出数；审计请求头中附加 `X-Grok2api-Request-Slimming`。
+- Build 会话身份（soft session）仍按原始请求体计算，瘦身不会切换会话。
+
+### Notes
+- 暂不对保留下来的图片做缩放。
+
 ## v3.4.8 — 2026-10-15
 
 ### Added

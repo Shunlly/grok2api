@@ -91,6 +91,15 @@ type GatewayConfig struct {
 	// MaxUpstreamRequestBytes rejects generation bodies above this size with 413
 	// before contacting xAI. 0 disables the guard.
 	MaxUpstreamRequestBytes int64 `yaml:"maxUpstreamRequestBytes"`
+	// RequestSlimming drops old images and trims old huge tool outputs before forwarding.
+	RequestSlimming RequestSlimmingConfig `yaml:"requestSlimming"`
+}
+
+// RequestSlimmingConfig controls history slimming of generation requests.
+type RequestSlimmingConfig struct {
+	Enabled             bool `yaml:"enabled"`
+	KeepImageTurns      int  `yaml:"keepImageTurns"`
+	KeepToolOutputTurns int  `yaml:"keepToolOutputTurns"`
 }
 
 type FrontendConfig struct {
@@ -502,6 +511,9 @@ func resolveRelativePaths(cfg *Config, configPath string) error {
 func (c Config) Validate() error {
 	if strings.TrimSpace(c.Server.Listen) == "" {
 		return errors.New("server.listen 不能为空")
+	}
+	if c.Gateway.RequestSlimming.KeepImageTurns < 0 || c.Gateway.RequestSlimming.KeepToolOutputTurns < 0 {
+		return fmt.Errorf("gateway.requestSlimming 轮数不能为负数")
 	}
 	if c.Gateway.MaxUpstreamRequestBytes < 0 {
 		return fmt.Errorf("gateway.maxUpstreamRequestBytes 不能为负数")
@@ -949,7 +961,7 @@ func defaultConfig() Config {
 			ReadTimeout:           Duration(15 * time.Minute),
 			RequestTimeout:        Duration(2 * time.Hour),
 		},
-		Gateway:  GatewayConfig{MaxUpstreamRequestBytes: 3 << 20},
+		Gateway:  GatewayConfig{MaxUpstreamRequestBytes: 3 << 20, RequestSlimming: RequestSlimmingConfig{Enabled: true, KeepImageTurns: 2, KeepToolOutputTurns: 2}},
 		Frontend: FrontendConfig{PublicAPIBaseURL: DefaultPublicAPIBaseURL, StaticPath: "./frontend/dist"},
 		Database: DatabaseConfig{
 			Driver:   "sqlite",
