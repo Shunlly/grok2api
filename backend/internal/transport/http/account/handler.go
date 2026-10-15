@@ -400,6 +400,18 @@ type accountResponse struct {
 	// PlanTier / PlanRaw：Build 套餐展示标签（heavy/supergrok/lite/free/raw）与上游原始套餐名。
 	PlanTier string `json:"planTier,omitempty"`
 	PlanRaw  string `json:"planRaw,omitempty"`
+	// PlanExpiresAt 是套餐（SuperGrok / Heavy 订阅）当前计费周期结束时间，来自 Grok Web
+	// GET /rest/subscriptions 的 billingPeriodEnd；Build 账号取关联 Web 账号的快照。
+	// 与周额度窗口、access token 过期时间无关。上游未提供时省略。
+	PlanExpiresAt      *time.Time `json:"planExpiresAt,omitempty"`
+	PlanExpiresSource  string     `json:"planExpiresSource,omitempty"`
+	PlanAutoRenew      bool       `json:"planAutoRenew,omitempty"`
+	PlanCancelAtEnd    bool       `json:"planCancelAtPeriodEnd,omitempty"`
+	PlanStatus         string     `json:"planStatus,omitempty"`
+	PlanName           string     `json:"planName,omitempty"`
+	PlanBillingPeriod  string     `json:"planBillingInterval,omitempty"`
+	PlanSyncedAt       *time.Time `json:"planSyncedAt,omitempty"`
+	PlanSubscriptionNo bool       `json:"planNoSubscription,omitempty"`
 }
 
 type modelQuotaBlockResponse struct {
@@ -1680,7 +1692,30 @@ func newAccountResponse(value accountapp.View) accountResponse {
 		result.NextResetAt, result.NextResetSource = nil, ""
 	}
 	result.ExpiresSource, result.ExpiresAutoRenew = credentialExpiry(result)
+	applyPlanSubscription(&result, value.Plan, value.PlanSource)
 	return result
+}
+
+func applyPlanSubscription(result *accountResponse, plan *accountdomain.PlanSubscription, source string) {
+	if plan == nil {
+		return
+	}
+	synced := plan.SyncedAt
+	result.PlanSyncedAt = &synced
+	result.PlanExpiresSource = source
+	if plan.Count == 0 {
+		result.PlanSubscriptionNo = true
+		return
+	}
+	if plan.PeriodEnd != nil {
+		end := *plan.PeriodEnd
+		result.PlanExpiresAt = &end
+	}
+	result.PlanAutoRenew = plan.AutoRenews()
+	result.PlanCancelAtEnd = plan.CancelAtPeriodEnd
+	result.PlanStatus = plan.Status
+	result.PlanName = plan.Plan
+	result.PlanBillingPeriod = plan.BillingInterval
 }
 
 // credentialExpiry 说明 expiresAt 的含义。上游没有提供订阅（SuperGrok）到期日：Billing 的

@@ -56,6 +56,7 @@ var schemaModels = []any{
 	&runtimeSettingsModel{},
 	&canaryProbeModel{},
 	&canaryProbeArtifactModel{},
+	&planSubscriptionModel{},
 }
 
 var schemaIndexes = []string{

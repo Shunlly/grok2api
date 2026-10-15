@@ -14,6 +14,7 @@ import { VersionUpdateBanner } from "@/features/system/version-update";
 import { ErrorState } from "@/shared/components/data-state";
 import { PeriodSelector } from "@/shared/components/period-selector";
 import { PERIOD_DAYS, toPeriodValue, type PeriodDays } from "@/shared/lib/period";
+import { displayTimeZone } from "@/shared/lib/format";
 
 type DashboardPreferences = { periodDays: PeriodDays };
 
@@ -27,7 +28,7 @@ export function DashboardPage() {
   const forceRefresh = useRef(false);
   const { periodDays } = preferences;
   const period: DashboardPeriod = toPeriodValue(periodDays);
-  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  const timezone = displayTimeZone();
 
   useEffect(() => {
     saveDashboardPreferences(preferences);

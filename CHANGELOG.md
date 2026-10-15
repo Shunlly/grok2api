@@ -2,6 +2,18 @@
 
 Shunlly/grok2api fork of [chenyme/grok2api](https://github.com/chenyme/grok2api).
 
+## v3.4.1 — 2026-10-15
+
+### Fixed
+- 账号时间显示时区错误：之前按浏览器本地时区格式化，浏览器/系统时区为美西（PT）时，access token 08:58Z 显示成「10-15 01:58 · 4小时后」（UTC+8 实际是 16:58）。日期本身和倒计时都基于同一时间戳，只是钟点按 PT 渲染。现在控制台统一按显示时区格式化（默认 `Asia/Shanghai`，可用 localStorage `grok2api.timeZone` 覆盖），24 小时制，悬停显示带「UTC+8」标签的完整时间；仪表盘统计也改用同一时区。
+
+### Changed
+- 「过期时间」更名为「凭证过期 (Access Token)」，悬停说明这是 OAuth Access Token（约 6 小时一换，refresh token 自动续期），不是套餐到期。
+
+### Added
+- 新增「套餐到期」：账号列表与编辑弹窗显示 SuperGrok / Heavy 订阅当前计费周期结束时间。数据来自 Grok Web `GET /rest/subscriptions`（`billingPeriodEnd`、`status`、`cancelAtPeriodEnd`、`dominantPlan.plan`），在 Web 账号「同步额度」时顺带刷新（失败不影响额度同步），存入新表 `account_plan_subscriptions`。Build 接口（`/user?include=subscription`、`/billing`）只返回套餐等级和周额度周期，没有到期日，因此 Build 账号取关联 Web 账号的订阅快照；Console 是预付费额度，没有套餐到期，显示 -。3 天内到期（未自动续订）标黄，已过期标红；`cancelAtPeriodEnd=true` 显示「已取消自动续订」。周额度周期不会被当作套餐到期。
+- 账号 API 新增 `planExpiresAt`、`planExpiresSource`（`webSubscriptions` / `linkedWebSubscriptions`）、`planAutoRenew`、`planCancelAtPeriodEnd`、`planStatus`、`planName`、`planBillingInterval`、`planSyncedAt`、`planNoSubscription`。
+
 ## v3.4.0 — 2026-10-15
 
 ### Added

@@ -124,6 +124,16 @@ export type AccountDTO = {
   nextResetSource?: string;
   expiresSource?: string;
   expiresAutoRenew?: boolean;
+  /** 套餐（SuperGrok/Heavy 订阅）当前计费周期结束时间；来自 Grok Web /rest/subscriptions，Build 取关联 Web 账号。 */
+  planExpiresAt?: string;
+  planExpiresSource?: string;
+  planAutoRenew?: boolean;
+  planCancelAtPeriodEnd?: boolean;
+  planStatus?: string;
+  planName?: string;
+  planBillingInterval?: string;
+  planSyncedAt?: string;
+  planNoSubscription?: boolean;
   lastUsedSource?: string;
   noQuota?: boolean;
   planTier?: string;
@@ -219,7 +229,7 @@ const accountValidator = hasShape({
   linkedAccountId: isOptional(isString), linkedAccountName: isOptional(isString), linkedProvider: isOptional(isOneOf("grok_build", "grok_web")), linkedAccounts: isOptional(isArrayOf(linkedAccountValidator)),
   createdAt: isString, billing: isOptional(billingValidator), quota: quotaValidator, quotaWindows: isOptional(isArrayOf(quotaWindowValidator)),
   modelQuotaBlocks: isOptional(isArrayOf(hasShape({ model: isString, reason: isString, cooldownUntil: isString }))),
-  nextResetAt: isOptional(isString), nextResetSource: isOptional(isString), expiresSource: isOptional(isString), expiresAutoRenew: isOptional(isBoolean), lastUsedSource: isOptional(isString), noQuota: isOptional(isBoolean), planTier: isOptional(isString), planRaw: isOptional(isString),
+  nextResetAt: isOptional(isString), nextResetSource: isOptional(isString), expiresSource: isOptional(isString), expiresAutoRenew: isOptional(isBoolean), lastUsedSource: isOptional(isString), noQuota: isOptional(isBoolean), planTier: isOptional(isString), planRaw: isOptional(isString), planExpiresAt: isOptional(isString), planExpiresSource: isOptional(isString), planAutoRenew: isOptional(isBoolean), planCancelAtPeriodEnd: isOptional(isBoolean), planStatus: isOptional(isString), planName: isOptional(isString), planBillingInterval: isOptional(isString), planSyncedAt: isOptional(isString), planNoSubscription: isOptional(isBoolean),
 });
 const decodeBilling = createValidatedDecoder<BillingDTO>("billing", billingValidator);
 const decodeAccount = createValidatedDecoder<AccountDTO>("account", accountValidator);
