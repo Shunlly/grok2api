@@ -25,16 +25,20 @@ type accountUsageStatsModel struct {
 	TotalUpstreamCostTicks int64  `gorm:"not null;default:0"`
 	TotalEstimatedTicks    int64  `gorm:"not null;default:0"`
 	FirstAuditAt           *time.Time
-	LastAuditID            uint64        `gorm:"not null;default:0"`
-	TodayDate              string        `gorm:"size:10;not null;default:''"`
-	TodayRequests          int64         `gorm:"not null;default:0"`
-	TodayFailedRequests    int64         `gorm:"not null;default:0"`
-	TodayInputTokens       int64         `gorm:"not null;default:0"`
-	TodayCachedInputTokens int64         `gorm:"not null;default:0"`
-	TodayOutputTokens      int64         `gorm:"not null;default:0"`
-	TodayTokens            int64         `gorm:"not null;default:0"`
-	TodayCostUSDTicks      int64         `gorm:"column:today_cost_usd_ticks;not null;default:0"`
-	ComputedAt             time.Time     `gorm:"not null"`
+	LastAuditID            uint64    `gorm:"not null;default:0"`
+	TodayDate              string    `gorm:"size:10;not null;default:''"`
+	TodayRequests          int64     `gorm:"not null;default:0"`
+	TodayFailedRequests    int64     `gorm:"not null;default:0"`
+	TodayInputTokens       int64     `gorm:"not null;default:0"`
+	TodayCachedInputTokens int64     `gorm:"not null;default:0"`
+	TodayOutputTokens      int64     `gorm:"not null;default:0"`
+	TodayTokens            int64     `gorm:"not null;default:0"`
+	TodayCostUSDTicks      int64     `gorm:"column:today_cost_usd_ticks;not null;default:0"`
+	ComputedAt             time.Time `gorm:"not null"`
+	// PeriodStart/PeriodEnd/PeriodSource：Total* 覆盖的额度周期（v3.4.4 起 Total* 只统计当前周期）。
+	PeriodStart  *time.Time
+	PeriodEnd    *time.Time
+	PeriodSource string `gorm:"size:64;not null;default:''"`
 }
 
 func (accountUsageStatsModel) TableName() string { return "account_usage_stats" }
@@ -79,96 +83,49 @@ func (r *AuditRepository) aggregateUsage(tx *gorm.DB, accountID uint64, scope fu
 	return row, err
 }
 
-// RefreshAccountUsageStats 增量累加水位之后的审计记录，并重算今日（北京时间）用量。
-func (r *AuditRepository) RefreshAccountUsageStats(ctx context.Context, accountID uint64, now time.Time) (repository.AccountUsageStats, error) {
+// RefreshAccountUsageStats 按账号当前额度周期 [period.Start, now] 从审计表重算周期用量，并重算今日（北京时间）用量。
+// 周期滚动后数值自然从 0 开始；旧版本的累计水位字段保留但不再参与计算。
+func (r *AuditRepository) RefreshAccountUsageStats(ctx context.Context, accountID uint64, period repository.UsagePeriod, now time.Time) (repository.AccountUsageStats, error) {
 	if accountID == 0 {
 		return repository.AccountUsageStats{}, errors.New("账号 ID 无效")
 	}
-	var saved accountUsageStatsModel
-	err := r.db.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var current accountUsageStatsModel
-		err := tx.Where("account_id = ?", accountID).Take(&current).Error
-		exists := err == nil
-		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-			return err
-		}
-		if !exists {
-			current = accountUsageStatsModel{AccountID: accountID}
-		}
-		watermark := current.LastAuditID
-		delta, err := r.aggregateUsage(tx, accountID, func(q *gorm.DB) *gorm.DB { return q.Where("id > ?", watermark) })
-		if err != nil {
-			return err
-		}
-		next := current
-		if delta.Requests > 0 {
-			next.TotalRequests += delta.Requests
-			next.TotalFailedRequests += delta.Failed
-			next.TotalInputTokens += delta.InputTokens
-			next.TotalCachedInputTokens += delta.CachedInputTokens
-			next.TotalOutputTokens += delta.OutputTokens
-			next.TotalReasoningTokens += delta.ReasoningTokens
-			next.TotalTokens += delta.Tokens
-			next.TotalCostUSDTicks += delta.Cost
-			next.TotalUpstreamCostTicks += delta.UpstreamCost
-			next.TotalEstimatedTicks += delta.EstimatedCost
-			if delta.MaxID > next.LastAuditID {
-				next.LastAuditID = delta.MaxID
-			}
-			if next.FirstAuditAt == nil {
-				var first []struct{ CreatedAt time.Time }
-				if err := tx.Model(&requestAuditModel{}).Select("created_at").
-					Where("account_id = ? AND id > ?", accountID, watermark).Where(dashboardExcludeProbePredicate).
-					Order("id ASC").Limit(1).Scan(&first).Error; err != nil {
-					return err
-				}
-				if len(first) > 0 && !first[0].CreatedAt.IsZero() {
-					at := first[0].CreatedAt.UTC()
-					next.FirstAuditAt = &at
-				}
-			}
-		}
-		local := now.In(usageStatsZone)
-		dayStart := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, usageStatsZone).UTC()
-		today, err := r.aggregateUsage(tx, accountID, func(q *gorm.DB) *gorm.DB {
-			return q.Where("created_at >= ? AND id <= ?", dayStart, next.LastAuditID)
-		})
-		if err != nil {
-			return err
-		}
-		next.TodayDate = local.Format("2006-01-02")
-		next.TodayRequests, next.TodayFailedRequests = today.Requests, today.Failed
-		next.TodayInputTokens, next.TodayCachedInputTokens = today.InputTokens, today.CachedInputTokens
-		next.TodayOutputTokens, next.TodayTokens, next.TodayCostUSDTicks = today.OutputTokens, today.Tokens, today.Cost
-		next.ComputedAt = now.UTC()
-		if !exists {
-			result := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&next)
-			if result.Error != nil {
-				return result.Error
-			}
-			if result.RowsAffected == 0 {
-				// 并发刷新已先写入，保留对方结果。
-				return tx.Where("account_id = ?", accountID).Take(&saved).Error
-			}
-		} else {
-			// 以旧水位做乐观锁，防止并发刷新重复累加同一批审计。
-			result := tx.Model(&accountUsageStatsModel{}).
-				Where("account_id = ? AND last_audit_id = ?", accountID, watermark).
-				Select("*").Omit("account_id").Updates(&next)
-			if result.Error != nil {
-				return result.Error
-			}
-			if result.RowsAffected == 0 {
-				return tx.Where("account_id = ?", accountID).Take(&saved).Error
-			}
-		}
-		saved = next
-		return nil
+	if period.Start.IsZero() || period.Start.After(now) {
+		return repository.AccountUsageStats{}, errors.New("用量周期无效")
+	}
+	tx := r.db.db.WithContext(ctx)
+	periodStart := period.Start.UTC()
+	nowUTC := now.UTC()
+	total, err := r.aggregateUsage(tx, accountID, func(q *gorm.DB) *gorm.DB {
+		return q.Where("created_at >= ? AND created_at <= ?", periodStart, nowUTC)
 	})
 	if err != nil {
 		return repository.AccountUsageStats{}, err
 	}
-	return usageStatsFromModel(saved), nil
+	local := now.In(usageStatsZone)
+	dayStart := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, usageStatsZone).UTC()
+	today, err := r.aggregateUsage(tx, accountID, func(q *gorm.DB) *gorm.DB {
+		return q.Where("created_at >= ? AND created_at <= ?", dayStart, nowUTC)
+	})
+	if err != nil {
+		return repository.AccountUsageStats{}, err
+	}
+	next := accountUsageStatsModel{AccountID: accountID,
+		TotalRequests: total.Requests, TotalFailedRequests: total.Failed, TotalInputTokens: total.InputTokens,
+		TotalCachedInputTokens: total.CachedInputTokens, TotalOutputTokens: total.OutputTokens, TotalReasoningTokens: total.ReasoningTokens,
+		TotalTokens: total.Tokens, TotalCostUSDTicks: total.Cost, TotalUpstreamCostTicks: total.UpstreamCost, TotalEstimatedTicks: total.EstimatedCost,
+		LastAuditID: total.MaxID, TodayDate: local.Format("2006-01-02"), TodayRequests: today.Requests, TodayFailedRequests: today.Failed,
+		TodayInputTokens: today.InputTokens, TodayCachedInputTokens: today.CachedInputTokens, TodayOutputTokens: today.OutputTokens,
+		TodayTokens: today.Tokens, TodayCostUSDTicks: today.Cost, ComputedAt: nowUTC,
+		PeriodStart: &periodStart, PeriodSource: period.Source,
+	}
+	if !period.End.IsZero() {
+		end := period.End.UTC()
+		next.PeriodEnd = &end
+	}
+	if err := tx.Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "account_id"}}, UpdateAll: true}).Create(&next).Error; err != nil {
+		return repository.AccountUsageStats{}, err
+	}
+	return usageStatsFromModel(next), nil
 }
 
 // AccountUsageStatsByAccounts 读取已保存的用量快照；未刷新过的账号不出现在结果中。
@@ -201,5 +158,6 @@ func usageStatsFromModel(m accountUsageStatsModel) repository.AccountUsageStats 
 		LastAuditID: m.LastAuditID, TodayDate: m.TodayDate, TodayRequests: m.TodayRequests, TodayFailedRequests: m.TodayFailedRequests,
 		TodayInputTokens: m.TodayInputTokens, TodayCachedInputTokens: m.TodayCachedInputTokens, TodayOutputTokens: m.TodayOutputTokens,
 		TodayTokens: m.TodayTokens, TodayCostUSDTicks: m.TodayCostUSDTicks, ComputedAt: m.ComputedAt.UTC(),
+		PeriodStart: m.PeriodStart, PeriodEnd: m.PeriodEnd, PeriodSource: m.PeriodSource,
 	}
 }

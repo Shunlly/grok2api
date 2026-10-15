@@ -2841,7 +2841,68 @@ func credentialRefreshBackoff(accountID uint64, failureCount int, retryAfter tim
 
 // usageStatsRefresher 由审计仓储实现：额度/账单同步时顺带刷新账号用量快照。
 type usageStatsRefresher interface {
-	RefreshAccountUsageStats(ctx context.Context, accountID uint64, now time.Time) (repository.AccountUsageStats, error)
+	RefreshAccountUsageStats(ctx context.Context, accountID uint64, period repository.UsagePeriod, now time.Time) (repository.AccountUsageStats, error)
+}
+
+// usagePeriodFallback 是无法从上游拿到额度周期时的滚动窗口。
+const usagePeriodFallback = 7 * 24 * time.Hour
+
+// rollPeriod 把已过期的周期按周期长度向前滚动到包含 now 的那一段（快照未及时同步时）。
+func rollPeriod(start, end, now time.Time) (time.Time, time.Time, bool) {
+	length := end.Sub(start)
+	if start.IsZero() || length <= 0 || start.After(now) {
+		return time.Time{}, time.Time{}, false
+	}
+	if !end.After(now) {
+		steps := now.Sub(end)/length + 1
+		start = start.Add(steps * length)
+		end = end.Add(steps * length)
+	}
+	return start, end, true
+}
+
+// resolveUsagePeriod 选出账号当前额度周期：
+//  1. Build：Billing usage_period_start..usage_period_end（上游周额度周期）；
+//  2. Web/Console：额度窗口 reset_at - window_seconds .. reset_at，多个模式取窗口最长的一个；
+//  3. 都没有时回退为滚动 7 天 [now-7d, now]。
+func resolveUsagePeriod(billing *accountdomain.Billing, windows []accountdomain.QuotaWindow, now time.Time) repository.UsagePeriod {
+	if billing != nil {
+		ps, okS := parseRFC3339Loose(billing.UsagePeriodStart)
+		pe, okE := parseRFC3339Loose(billing.UsagePeriodEnd)
+		if okS && okE {
+			if start, end, ok := rollPeriod(ps, pe, now); ok {
+				return repository.UsagePeriod{Start: start, End: end, Source: "billingUsagePeriod"}
+			}
+		}
+	}
+	var best *accountdomain.QuotaWindow
+	for i := range windows {
+		w := &windows[i]
+		if w.ResetAt == nil || w.WindowSeconds <= 0 {
+			continue
+		}
+		if best == nil || w.WindowSeconds > best.WindowSeconds {
+			best = w
+		}
+	}
+	if best != nil {
+		length := time.Duration(best.WindowSeconds) * time.Second
+		if start, end, ok := rollPeriod(best.ResetAt.Add(-length), *best.ResetAt, now); ok {
+			return repository.UsagePeriod{Start: start, End: end, Source: "quotaWindow:" + best.Mode}
+		}
+	}
+	return repository.UsagePeriod{Start: now.Add(-usagePeriodFallback), Source: "rolling7d"}
+}
+
+func parseRFC3339Loose(raw string) (time.Time, bool) {
+	if raw == "" {
+		return time.Time{}, false
+	}
+	t, err := time.Parse(time.RFC3339Nano, raw)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return t.UTC(), true
 }
 
 // refreshUsageStatsBestEffort 刷新账号请求数 / Token / 金额快照，失败只记日志，不影响额度同步结果。
@@ -2852,7 +2913,16 @@ func (s *Service) refreshUsageStatsBestEffort(ctx context.Context, id uint64) {
 	}
 	statsCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
 	defer cancel()
-	if _, err := refresher.RefreshAccountUsageStats(statsCtx, id, time.Now()); err != nil {
+	now := time.Now()
+	var billing *accountdomain.Billing
+	if value, err := s.accounts.GetBilling(statsCtx, id); err == nil {
+		billing = &value
+	}
+	var windows []accountdomain.QuotaWindow
+	if found, err := s.accounts.GetQuotaWindows(statsCtx, []uint64{id}); err == nil {
+		windows = found[id]
+	}
+	if _, err := refresher.RefreshAccountUsageStats(statsCtx, id, resolveUsagePeriod(billing, windows, now), now); err != nil {
 		s.logger.Warn("account_usage_stats_refresh_failed", "account_id", id, "error", err)
 	}
 }

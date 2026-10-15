@@ -200,12 +200,14 @@ export interface AccountUsageStatsDTO {
   totalReasoningTokens: number; totalTokens: number; totalCostUsdTicks: number; totalUpstreamCostUsdTicks: number; totalEstimatedCostUsdTicks: number;
   firstAuditAt?: string; todayDate: string; todayRequests: number; todayFailedRequests: number; todayInputTokens: number; todayCachedInputTokens: number;
   todayOutputTokens: number; todayTokens: number; todayCostUsdTicks: number; computedAt: string;
+  periodStart?: string; periodEnd?: string; periodSource?: string;
 }
 const usageStatsValidator = hasShape({
   totalRequests: isNumber, totalFailedRequests: isNumber, totalInputTokens: isNumber, totalCachedInputTokens: isNumber, totalOutputTokens: isNumber,
   totalReasoningTokens: isNumber, totalTokens: isNumber, totalCostUsdTicks: isNumber, totalUpstreamCostUsdTicks: isNumber, totalEstimatedCostUsdTicks: isNumber,
   firstAuditAt: isOptional(isString), todayDate: isString, todayRequests: isNumber, todayFailedRequests: isNumber, todayInputTokens: isNumber, todayCachedInputTokens: isNumber,
   todayOutputTokens: isNumber, todayTokens: isNumber, todayCostUsdTicks: isNumber, computedAt: isString,
+  periodStart: isOptional(isString), periodEnd: isOptional(isString), periodSource: isOptional(isString),
 });
 const billingValidator = hasShape({
   planCode: isOptional(isString), planName: isOptional(isString), monthlyLimit: isNumber, used: isNumber, remaining: isNumber,
