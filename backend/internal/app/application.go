@@ -26,6 +26,7 @@ import (
 	mediaapp "github.com/chenyme/grok2api/backend/internal/application/media"
 	modelapp "github.com/chenyme/grok2api/backend/internal/application/model"
 	quotarecoveryapp "github.com/chenyme/grok2api/backend/internal/application/quotarecovery"
+	quotasyncapp "github.com/chenyme/grok2api/backend/internal/application/quotasync"
 	settingsapp "github.com/chenyme/grok2api/backend/internal/application/settings"
 	updatecheckapp "github.com/chenyme/grok2api/backend/internal/application/updatecheck"
 	"github.com/chenyme/grok2api/backend/internal/buildinfo"
@@ -67,6 +68,7 @@ type Application struct {
 	server          *http.Server
 	audits          *auditapp.Service
 	canary          *canaryapp.Service
+	quotaAutoSync   *quotasyncapp.Service
 	responses       repository.ResponseRepository
 	cleanupLock     repository.DistributedLock
 	runtime         io.Closer
@@ -459,12 +461,16 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*Applicat
 		}
 		return result.Status == canarydomain.StatusPass, result.Reasons, nil
 	})
-	router := httpserver.New(httpserver.Dependencies{Canary: canaryService, Logger: logger, RequestTimeout: cfg.Server.RequestTimeout.Value(), MaxBodyBytes: cfg.Server.MaxBodyBytes, TrustedProxies: cfg.Server.TrustedProxies, ConcurrencyGate: inferenceConcurrency, SecureCookies: cfg.Auth.SecureCookies, SwaggerEnabled: cfg.Server.SwaggerEnabled, PublicAPIBaseURL: cfg.Frontend.EffectivePublicAPIBaseURL(), FrontendStaticPath: cfg.Frontend.StaticPath, Readiness: readiness, TrafficReady: startup.acceptsTraffic, AdminAuth: adminService, Accounts: accountService, AccountSync: accountSyncService, AccountLastUse: auditRepo, AccountModels: modelRepo, Models: modelService, ClientKeys: clientKeyService, Audits: auditService, Dashboard: dashboardService, Gateway: gatewayService, Media: mediaService, Settings: settingsService, Egress: egressService, QualityGuardStatePath: qualityGuardPath("state.json"), QualityGuardConfigPath: qualityGuardPath("runtime-config.json"), QualityGuardToken: qualityGuardToken, QualityGuardProbe: qualityGuardProbe, Updates: updateService})
+	quotaAutoSyncService := quotasyncapp.NewService(quotasyncapp.Config{
+		Interval: cfg.Quota.AutoSyncInterval.Value(), InitialDelay: cfg.Quota.AutoSyncInitialDelay.Value(),
+		Concurrency: cfg.Quota.AutoSyncConcurrency, MaxJitter: 5 * time.Second, ResetDelay: 90 * time.Second,
+	}, accountService, logger)
+	router := httpserver.New(httpserver.Dependencies{Canary: canaryService, QuotaAutoSync: quotaAutoSyncService, Logger: logger, RequestTimeout: cfg.Server.RequestTimeout.Value(), MaxBodyBytes: cfg.Server.MaxBodyBytes, TrustedProxies: cfg.Server.TrustedProxies, ConcurrencyGate: inferenceConcurrency, SecureCookies: cfg.Auth.SecureCookies, SwaggerEnabled: cfg.Server.SwaggerEnabled, PublicAPIBaseURL: cfg.Frontend.EffectivePublicAPIBaseURL(), FrontendStaticPath: cfg.Frontend.StaticPath, Readiness: readiness, TrafficReady: startup.acceptsTraffic, AdminAuth: adminService, Accounts: accountService, AccountSync: accountSyncService, AccountLastUse: auditRepo, AccountModels: modelRepo, Models: modelService, ClientKeys: clientKeyService, Audits: auditService, Dashboard: dashboardService, Gateway: gatewayService, Media: mediaService, Settings: settingsService, Egress: egressService, QualityGuardStatePath: qualityGuardPath("state.json"), QualityGuardConfigPath: qualityGuardPath("runtime-config.json"), QualityGuardToken: qualityGuardToken, QualityGuardProbe: qualityGuardProbe, Updates: updateService})
 	server := &http.Server{Addr: cfg.Server.Listen, Handler: router, ReadHeaderTimeout: 10 * time.Second, ReadTimeout: cfg.Server.ReadTimeout.Value(), IdleTimeout: 2 * time.Minute, MaxHeaderBytes: 64 << 10}
 	return &Application{
 		logger: logger, database: database, server: server,
 		audits: auditService, responses: responseRepo, cleanupLock: refreshLock, runtime: runtimeStore,
-		settingsBus: settingsBus, invalidationBus: invalidationBus, settings: settingsService, gateway: gatewayService, media: mediaService, quotaRecovery: quotaRecoveryService, accounts: accountService, models: modelService, clientKeys: clientKeyService, updates: updateService, canary: canaryService, invalidations: invalidationService,
+		settingsBus: settingsBus, invalidationBus: invalidationBus, settings: settingsService, gateway: gatewayService, media: mediaService, quotaRecovery: quotaRecoveryService, accounts: accountService, models: modelService, clientKeys: clientKeyService, updates: updateService, canary: canaryService, quotaAutoSync: quotaAutoSyncService, invalidations: invalidationService,
 		accountRepo: accountRepo, modelRepo: modelRepo, providers: providers, web: webAdapter, egress: egressManager, egressOps: egressService, startup: startup,
 	}, nil
 }
@@ -594,6 +600,7 @@ func (a *Application) Run(ctx context.Context) error {
 		return nil
 	})
 	startBackground("canary_prober", a.canary.Run)
+	startBackground("quota_auto_sync", a.quotaAutoSync.Run)
 	startBackground("performance_metrics", func(taskCtx context.Context) error {
 		a.runPeriodicTask(taskCtx, time.Minute, "performance_metrics", func(context.Context) error {
 			a.logPerformanceMetrics()

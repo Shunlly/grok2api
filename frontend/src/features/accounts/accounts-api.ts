@@ -318,6 +318,24 @@ export function getContextWindowCatalog(): Promise<ContextWindowCatalogDTO> {
   return apiRequest("/api/admin/v1/accounts/context-windows", {}, decodeContextWindowCatalog);
 }
 
+export type QuotaAutoSyncStatusDTO = {
+  enabled: boolean; intervalSeconds: number; running: boolean;
+  lastRunAt?: string; lastFinishedAt?: string; lastReason?: string;
+  lastTotal: number; lastSucceeded: number; lastFailed: number;
+  nextRunAt?: string; nextResetSyncAt?: string;
+};
+
+const decodeQuotaAutoSyncStatus = createObjectDecoder<QuotaAutoSyncStatusDTO>("quota auto sync status", {
+  enabled: isBoolean, intervalSeconds: isNumber, running: isBoolean,
+  lastRunAt: isOptional(isString), lastFinishedAt: isOptional(isString), lastReason: isOptional(isString),
+  lastTotal: isNumber, lastSucceeded: isNumber, lastFailed: isNumber,
+  nextRunAt: isOptional(isString), nextResetSyncAt: isOptional(isString),
+});
+
+export function getQuotaAutoSyncStatus(): Promise<QuotaAutoSyncStatusDTO> {
+  return apiRequest("/api/admin/v1/accounts/auto-sync/status", {}, decodeQuotaAutoSyncStatus);
+}
+
 export function updateAccount(id: string, input: AccountUpdateInput): Promise<AccountDTO> {
   return apiRequest(`/api/admin/v1/accounts/${id}`, { method: "PATCH", body: input }, decodeAccount);
 }

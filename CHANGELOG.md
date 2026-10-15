@@ -2,6 +2,15 @@
 
 Shunlly/grok2api fork of [chenyme/grok2api](https://github.com/chenyme/grok2api).
 
+## v3.4.5 — 2026-10-15
+
+### Added
+- 后台定时同步额度：默认每 1 小时（`quota.autoSyncInterval`，`0` 关闭，范围 5m–24h；启动后 `autoSyncInitialDelay` 默认 2m 首次运行）同步全部启用且非 `reauthRequired` 的账号：Build Billing（含周额度周期）、Web 额度窗口和订阅、Console 额度，并顺带刷新 `account_usage_stats`。
+- 周期重置补同步：每轮同步后记录每个账号已知的下一次重置时间（Billing `usage_period_end`、额度窗口 `reset_at` 取最早），在重置后约 90 秒只对该账号额外同步一次，让周期统计及时归零。
+- 防突发：并发默认 2（`quota.autoSyncConcurrency`，1–8），每个账号请求前随机等待 0–5 秒，仍走共享同步池。失败只记 `quota_auto_sync_account_failed` 日志，账号健康状态只由原有同步逻辑决定。
+- `GET /api/admin/v1/accounts/auto-sync/status`；账号页标题旁显示「自动同步 · 下次时间」，悬停显示间隔、上次运行结果、下次定时和重置补同步时间（UTC+8）。
+- 该配置目前只在 `config.yaml` 中设置，未接入运行时设置页。
+
 ## v3.4.4 — 2026-10-15
 
 ### Changed

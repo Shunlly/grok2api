@@ -70,6 +70,7 @@ type Config struct {
 	QualityGuard      QualityGuardConfig      `yaml:"qualityGuard"`
 	Canary            CanaryConfig            `yaml:"canary"`
 	AutoReactivate    AutoReactivateConfig    `yaml:"autoReactivate"`
+	Quota             QuotaConfig             `yaml:"quota"`
 	ClientKeyDefaults ClientKeyDefaultsConfig `yaml:"clientKeyDefaults"`
 	Accounts          AccountsConfig          `yaml:"-"`
 }
@@ -272,6 +273,14 @@ type CanaryConfig struct {
 	// IdleTimeout fails silent probes early (first token / gap between chunks).
 	IdleTimeout   Duration `yaml:"idleTimeout"`
 	RetentionDays int      `yaml:"retentionDays"`
+}
+
+// QuotaConfig controls the scheduled background quota / billing / usage
+// stats sync. AutoSyncInterval 0 disables it.
+type QuotaConfig struct {
+	AutoSyncInterval     Duration `yaml:"autoSyncInterval"`
+	AutoSyncInitialDelay Duration `yaml:"autoSyncInitialDelay"`
+	AutoSyncConcurrency  int      `yaml:"autoSyncConcurrency"`
 }
 
 // AutoReactivateConfig controls automatic re-activation of accounts whose
@@ -745,6 +754,12 @@ func (c Config) Validate() error {
 	if c.Canary.Enabled && c.Canary.Interval.Value() < 10*time.Minute {
 		return errors.New("canary.interval 不能小于 10m")
 	}
+	if v := c.Quota.AutoSyncInterval.Value(); v != 0 && (v < 5*time.Minute || v > 24*time.Hour) {
+		return errors.New("quota.autoSyncInterval 必须为 0（关闭）或 5 分钟到 24 小时之间")
+	}
+	if c.Quota.AutoSyncConcurrency < 1 || c.Quota.AutoSyncConcurrency > 8 {
+		return errors.New("quota.autoSyncConcurrency 必须在 1 到 8 之间")
+	}
 	if c.AutoReactivate.Interval.Value() < time.Minute || c.AutoReactivate.Interval.Value() > 24*time.Hour {
 		return errors.New("autoReactivate.interval 必须在 1 分钟到 24 小时之间")
 	}
@@ -991,6 +1006,9 @@ func defaultConfig() Config {
 			Enabled: false, Interval: Duration(6 * time.Hour), InitialDelay: Duration(10 * time.Minute),
 			Model: "grok-4.7", ReasoningEffort: "high", MaxOutputTokens: 6000,
 			ProbeTimeout: Duration(5 * time.Minute), IdleTimeout: Duration(75 * time.Second), RetentionDays: 30,
+		},
+		Quota: QuotaConfig{
+			AutoSyncInterval: Duration(time.Hour), AutoSyncInitialDelay: Duration(2 * time.Minute), AutoSyncConcurrency: 2,
 		},
 		AutoReactivate: AutoReactivateConfig{
 			Enabled: true, Interval: Duration(10 * time.Minute), MaxAge: Duration(5 * 24 * time.Hour), IncludeQualityDisabled: false,

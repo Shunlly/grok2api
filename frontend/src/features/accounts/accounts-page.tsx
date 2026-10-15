@@ -32,7 +32,7 @@ import { SortableTableHead } from "@/shared/components/sortable-table-head";
 import { VirtualTableBody } from "@/shared/components/virtual-table-body";
 import { useDebouncedValue } from "@/shared/hooks/use-debounced-value";
 import { cn } from "@/shared/lib/cn";
-import { formatDateTime, formatNumber } from "@/shared/lib/format";
+import { formatCompactDateTime, formatDateTime, formatNumber } from "@/shared/lib/format";
 import { AccountModelsDialog } from "@/features/accounts/account-models-dialog";
 import { nextTableSort, type SortOrder, type TableSort } from "@/shared/lib/table-sort";
 import {
@@ -90,6 +90,7 @@ import {
   type DeviceSessionDTO,
   type QuotaDTO,
   getContextWindowCatalog,
+  getQuotaAutoSyncStatus,
 } from "@/features/accounts/accounts-api";
 import { AccountNextReset } from "@/features/accounts/account-next-reset";
 import { AccountUsageStats } from "@/features/accounts/account-usage-stats";
@@ -1334,6 +1335,7 @@ export function AccountsPage() {
     <div className="space-y-5">
       <header className="flex min-h-8 items-center">
         <h1 className="text-xl font-medium">{t("accounts.title")}</h1>
+        <QuotaAutoSyncBadge />
         <p className="sr-only">{t("console.accountsDescription")}</p>
       </header>
       <section className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
@@ -2571,5 +2573,29 @@ function StatusTooltip({ children, content }: { children: ReactNode; content: Re
       </TooltipTrigger>
       <TooltipContent className="w-max max-w-sm">{content}</TooltipContent>
     </Tooltip>
+  );
+}
+
+function QuotaAutoSyncBadge() {
+  const { t, i18n } = useTranslation();
+  const query = useQuery({ queryKey: ["accounts", "auto-sync-status"], queryFn: getQuotaAutoSyncStatus, refetchInterval: 60_000, staleTime: 30_000 });
+  const status = query.data;
+  if (!status) return null;
+  const time = (value?: string) => formatCompactDateTime(value, i18n.language);
+  const reason = status.lastReason === "period_reset" ? t("accounts.autoSync.reasonPeriodReset") : t("accounts.autoSync.reasonScheduled");
+  const lines = status.enabled
+    ? [
+        t("accounts.autoSync.interval", { minutes: Math.round(status.intervalSeconds / 60) }),
+        status.lastRunAt ? t("accounts.autoSync.lastRun", { time: time(status.lastFinishedAt ?? status.lastRunAt), reason, succeeded: status.lastSucceeded, failed: status.lastFailed }) : t("accounts.autoSync.never"),
+        ...(status.nextRunAt ? [t("accounts.autoSync.nextRun", { time: time(status.nextRunAt) })] : []),
+        ...(status.nextResetSyncAt ? [t("accounts.autoSync.nextReset", { time: time(status.nextResetSyncAt) })] : []),
+        t("accounts.autoSync.zone"),
+      ]
+    : [t("accounts.autoSync.disabled")];
+  const label = !status.enabled ? t("accounts.autoSync.disabled") : status.running ? t("accounts.autoSync.running") : `${t("accounts.autoSync.label")} · ${time(status.nextResetSyncAt ?? status.nextRunAt).slice(5, 16)}`;
+  return (
+    <span className="ml-3 cursor-help text-xs text-muted-foreground" title={lines.join("\n")}>
+      {label}
+    </span>
   );
 }

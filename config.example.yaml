@@ -141,6 +141,15 @@ canary:
   idleTimeout: 75s
   retentionDays: 30
 
+# 后台定时同步额度 / 账单 / 用量统计（v3.4.5）。复用「同步全部」的路径，
+# 只同步启用且未失效的 Build / Web / Console 账号；每个请求前随机等待 0-5s，
+# 并发 autoSyncConcurrency。已知的周期重置时间过后约 90 秒额外补同步该账号。
+# 失败只记日志。autoSyncInterval: 0 关闭。
+quota:
+  autoSyncInterval: 1h
+  autoSyncInitialDelay: 2m
+  autoSyncConcurrency: 2
+
 # 账号自动恢复：只重检被判定为「临时失效」的账号（例如上游偶发 401），
 # 退避 10m/30m/2h/6h/24h，约 5 天或遇到封禁/永久错误码后停止。
 # 管理员手动停用、永久失效（封禁、refresh token 被吊销）的账号永远不会被自动恢复。

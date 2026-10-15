@@ -2,6 +2,8 @@ package httpserver
 
 import (
 	"context"
+	quotasyncapp "github.com/chenyme/grok2api/backend/internal/application/quotasync"
+	"github.com/chenyme/grok2api/backend/internal/shared/response"
 	"log/slog"
 	"net/http"
 	"time"
@@ -73,6 +75,7 @@ type Dependencies struct {
 	QualityGuardProbe      egressapp.QualityProbeInput
 	Updates                *updatecheckapp.Service
 	Canary                 *canaryapp.Service
+	QuotaAutoSync          *quotasyncapp.Service
 }
 
 type ReadinessComponent struct {
@@ -167,6 +170,11 @@ func New(deps Dependencies) *gin.Engine {
 	egressHandler := egresshttp.NewHandler(deps.Egress, deps.QualityGuardStatePath, deps.QualityGuardConfigPath).WithQualityGuardProbe(deps.QualityGuardProbe)
 	egressHandler.Register(adminProtected)
 	canaryhttp.NewHandler(deps.Canary).Register(adminProtected)
+	if deps.QuotaAutoSync != nil {
+		adminProtected.GET("/accounts/auto-sync/status", func(c *gin.Context) {
+			response.Success(c, http.StatusOK, deps.QuotaAutoSync.Status())
+		})
+	}
 	systemhttp.NewHandler(func() string {
 		if deps.Settings != nil {
 			return deps.Settings.PublicAPIBaseURL()
