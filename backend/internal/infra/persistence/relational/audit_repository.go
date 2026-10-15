@@ -1141,3 +1141,36 @@ func (r *AuditRepository) PurgeOlderThan(ctx context.Context, cutoff time.Time) 
 		}
 	}
 }
+
+// LastRealUseByAccounts 返回每个账号最近一次成功服务真实请求（status < 400）的时间，
+// 排除出口质量探针 / 定时考题（request_id 前缀 quality_）与内部 Client Key 发出的请求。
+// 每个账号单独走 idx_audits_account_created_id(account_id, created_at DESC) 倒序取第一条，
+// 不做全表扫描；无记录（含审计已过保留期）的账号不出现在结果中。
+func (r *AuditRepository) LastRealUseByAccounts(ctx context.Context, accountIDs []uint64) (map[uint64]time.Time, error) {
+	result := make(map[uint64]time.Time, len(accountIDs))
+	seen := make(map[uint64]struct{}, len(accountIDs))
+	for _, id := range accountIDs {
+		if id == 0 {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		var rows []struct{ CreatedAt time.Time }
+		err := r.db.db.WithContext(ctx).
+			Model(&requestAuditModel{}).
+			Select("created_at").
+			Where("account_id = ? AND status_code < 400", id).
+			Where(dashboardExcludeProbePredicate).
+			Order("created_at DESC").Limit(1).
+			Scan(&rows).Error
+		if err != nil {
+			return nil, err
+		}
+		if len(rows) > 0 && !rows[0].CreatedAt.IsZero() {
+			result[id] = rows[0].CreatedAt.UTC()
+		}
+	}
+	return result, nil
+}
