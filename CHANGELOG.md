@@ -2,6 +2,13 @@
 
 Shunlly/grok2api fork of [chenyme/grok2api](https://github.com/chenyme/grok2api).
 
+## v3.3.9 — 2026-10-15
+
+### Changed
+- Console 额度上限为 0（上游 `/v1/usage` 的 chat 窗口 `limit=0`，未授予/未充值）的账号显示「无额度」，不再显示「待重置」；不计入「额度待重置」卡片，改为卡片内单独的「无额度 N」；不再为 `limit=0` 窗口合成「当前 + 24 小时」的重置时间，下次重置显示 -。调度排除逻辑不变。
+- 账号汇总 API `recovery` 新增 `noQuota`，状态筛选新增 `noQuota`；账号 API 新增 `noQuota`。
+- Build 账号类型按上游套餐名显示：SuperGrokPro / SuperGrok Heavy → Heavy，SuperGrok → SuperGrok，SuperGrok Lite → Lite，Free → Free，其他显示原值；悬停显示原始套餐名。账号 API 新增 `planTier`、`planRaw`。付费/免费调度逻辑不变。
+
 ## v3.3.8 — 2026-10-15
 
 ### Added

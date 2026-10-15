@@ -1223,6 +1223,7 @@ export function AccountsPage() {
   const cooldownAccounts = summary?.recovery.cooldown ?? 0;
   const waitingResetAccounts = summary?.recovery.waitingReset ?? 0;
   const probingAccounts = summary?.recovery.probing ?? 0;
+  const noQuotaAccounts = summary?.recovery.noQuota ?? 0;
   const disabledAccounts = summary?.issues.disabled ?? 0;
   const invalidAccounts = summary?.issues.reauthRequired ?? 0;
   const riskAccounts = summary?.risk ?? 0;
@@ -1350,7 +1351,8 @@ export function AccountsPage() {
           loading={summaryLoading}
           label={t("accounts.waitingResetAccountCount")}
           value={summaryUnavailable ? "-" : formatNumber(waitingResetAccounts, i18n.language, 0)}
-          detail={t("accounts.waitingResetAccountDetail")}
+          detail={noQuotaAccounts > 0 ? `${t("accounts.waitingResetAccountDetail")} · ${t("accounts.noQuotaCount", { count: noQuotaAccounts })}` : t("accounts.waitingResetAccountDetail")}
+          detailItems={!summaryUnavailable && noQuotaAccounts > 0 ? [{ label: t("accounts.noQuota"), value: formatNumber(noQuotaAccounts, i18n.language, 0), tone: "bg-muted text-muted-foreground" }] : undefined}
         />
       </section>
       <div className="space-y-5">
@@ -1553,7 +1555,7 @@ export function AccountsPage() {
 	                  <TableRow className="group h-14 [&>td]:py-1.5" key={account.id} data-state={selected.has(account.id) ? "selected" : undefined}>
                     <TableCell className="px-2"><Checkbox checked={selected.has(account.id)} onCheckedChange={(checked) => toggleAccount(account.id, checked === true)} aria-label={t("common.selectItem", { name: account.name })} /></TableCell>
 	                    <TableCell className="min-w-0"><AccountNameCell account={account} qualityFlag={qualityFlags.get(account.id)} /></TableCell>
-                    <TableCell className="text-center whitespace-nowrap">{provider === "grok_web" ? <WebAccountType tier={account.webTier} /> : provider === "grok_console" ? <AccountTypeText label={t("accountType.console")} variant="free" /> : <AccountType quota={account.quota} />}</TableCell>
+                    <TableCell className="text-center whitespace-nowrap">{provider === "grok_web" ? <WebAccountType tier={account.webTier} /> : provider === "grok_console" ? <AccountTypeText label={t("accountType.console")} variant="free" /> : <AccountType quota={account.quota} planTier={account.planTier} planRaw={account.planRaw} />}</TableCell>
                     <TableCell className="text-center whitespace-nowrap"><AccountStatus account={account} /></TableCell>
                     <TableCell className={provider === "grok_build" ? undefined : "px-6"}>{provider === "grok_web" ? <WebQuota windows={account.quotaWindows ?? []} locale={i18n.language} tier={account.webTier} /> : provider === "grok_console" ? <ConsoleQuota windows={account.quotaWindows ?? []} locale={i18n.language} /> : <AccountQuota quota={account.quota} billing={account.billing} locale={i18n.language} />}<AccountNextReset account={account} /><AccountExpiry account={account} /><AccountLastUsed account={account} />
                       {account.modelQuotaBlocks?.length ? (
@@ -2411,13 +2413,17 @@ function WebAccountType({ tier }: { tier?: AccountDTO["webTier"] }) {
   return <AccountTypeText label={label} variant={tier === "basic" ? "free" : "default"} />;
 }
 
-function AccountType({ quota }: { quota: QuotaDTO }) {
+function AccountType({ quota, planTier, planRaw }: { quota: QuotaDTO; planTier?: string; planRaw?: string }) {
   const { t } = useTranslation();
   if (quota.type === "unknown") {
     return <AccountTypeText label={t("accountType.pending")} title={t("accountType.pendingDescription")} variant="muted" />;
   }
 
   const isFree = quota.type === "free";
+  if (planTier && planRaw) {
+    const tierLabel = planTier === "heavy" ? t("accountType.heavy") : planTier === "supergrok" ? t("accountType.supergrok") : planTier === "lite" ? t("accountType.lite") : planTier === "free" ? t("accountType.free") : planRaw;
+    return <AccountTypeText label={tierLabel} title={t("accountType.planRaw", { plan: planRaw })} variant={isFree ? "free" : "default"} />;
+  }
   const label = isFree ? t("accountType.free") : t("accountType.paid");
   return <AccountTypeText label={label} variant={isFree ? "free" : "default"} />;
 }
@@ -2481,6 +2487,13 @@ function AccountStatus({ account }: { account: AccountDTO }) {
   const consoleWindow = account.provider === "grok_console"
     ? account.quotaWindows?.find((window) => window.mode === "console" && window.remaining <= 0)
     : undefined;
+  if (account.noQuota) {
+    return (
+      <StatusTooltip content={t("accounts.noQuotaDetail")}>
+        <Badge variant="secondary" className="bg-muted text-muted-foreground">{t("accounts.noQuota")}</Badge>
+      </StatusTooltip>
+    );
+  }
   if (consoleWindow) {
     const detail = consoleWindow.resetAt
       ? t("accounts.quotaResetAt", { time: formatDateTime(consoleWindow.resetAt, i18n.language) })

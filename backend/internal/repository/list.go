@@ -104,6 +104,7 @@ type AccountSummary struct {
 	Available      int64
 	Cooldown       int64
 	WaitingReset   int64
+	NoQuota        int64
 	Probing        int64
 	Disabled       int64
 	ReauthRequired int64
