@@ -19,6 +19,17 @@ export type DashboardUsageDTO = {
   outputTokensPerSecond?: number;
   firstTokenSamples?: number;
   throughputSamples?: number;
+  medianFirstTokenMs?: number;
+  p90FirstTokenMs?: number;
+  firstTokenBuckets?: DashboardFirstTokenBucketDTO[];
+};
+
+export type DashboardFirstTokenBucketDTO = {
+  key: string;
+  minInputTokens: number;
+  maxInputTokens: number;
+  samples: number;
+  medianMs: number;
 };
 
 export type DashboardDTO = {
@@ -52,6 +63,8 @@ const dashboardUsage = hasShape({
   cachedInputTokens: isNumber, outputTokens: isNumber, reasoningTokens: isNumber, tokens: isNumber,
   billedCostUsdTicks: isNumber, successRate: isNumber, averageFirstTokenMs: isOptional(isNumber),
   outputTokensPerSecond: isOptional(isNumber), firstTokenSamples: isOptional(isNumber), throughputSamples: isOptional(isNumber),
+  medianFirstTokenMs: isOptional(isNumber), p90FirstTokenMs: isOptional(isNumber),
+  firstTokenBuckets: isOptional(isArrayOf(hasShape({ key: isString, minInputTokens: isNumber, maxInputTokens: isNumber, samples: isNumber, medianMs: isNumber }))),
 });
 const dashboardModelItem = hasShape({
   model: isString, requests: isNumber, inputTokens: isNumber, cachedInputTokens: isNumber,

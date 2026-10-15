@@ -61,6 +61,18 @@ type usageDTO struct {
 	OutputTokensPerSecond float64 `json:"outputTokensPerSecond"`
 	FirstTokenSamples     int64   `json:"firstTokenSamples"`
 	ThroughputSamples     int64   `json:"throughputSamples"`
+	MedianFirstTokenMS    int64   `json:"medianFirstTokenMs"`
+	P90FirstTokenMS       int64   `json:"p90FirstTokenMs"`
+	// FirstTokenBuckets 按输入 token 规模分组；统计已排除质量探针与定时考题。
+	FirstTokenBuckets []firstTokenBucketDTO `json:"firstTokenBuckets"`
+}
+
+type firstTokenBucketDTO struct {
+	Key      string `json:"key"`
+	MinInput int64  `json:"minInputTokens"`
+	MaxInput int64  `json:"maxInputTokens"`
+	Samples  int64  `json:"samples"`
+	MedianMS int64  `json:"medianMs"`
 }
 
 type seriesDTO struct {
@@ -175,7 +187,22 @@ func toUsageDTO(usage dashboarddomain.Usage) usageDTO {
 		OutputTokensPerSecond: outputTokensPerSecond(usage),
 		FirstTokenSamples:     usage.FirstTokenSamples,
 		ThroughputSamples:     usage.ThroughputSamples,
+		MedianFirstTokenMS:    usage.FirstTokenMedianMS,
+		P90FirstTokenMS:       usage.FirstTokenP90MS,
+		FirstTokenBuckets:     firstTokenBuckets(usage),
 	}
+}
+
+func firstTokenBuckets(usage dashboarddomain.Usage) []firstTokenBucketDTO {
+	source := usage.FirstTokenBuckets
+	if len(source) == 0 {
+		source = dashboarddomain.FirstTokenInputBuckets
+	}
+	items := make([]firstTokenBucketDTO, 0, len(source))
+	for _, bucket := range source {
+		items = append(items, firstTokenBucketDTO{Key: bucket.Key, MinInput: bucket.MinInput, MaxInput: bucket.MaxInput, Samples: bucket.Samples, MedianMS: bucket.MedianMS})
+	}
+	return items
 }
 
 func averageFirstTokenMS(usage dashboarddomain.Usage) float64 {

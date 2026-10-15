@@ -343,6 +343,9 @@ type accountResponse struct {
 	Quota                       quotaResponse             `json:"quota"`
 	QuotaWindows                []quotaWindowResponse     `json:"quotaWindows,omitempty"`
 	ModelQuotaBlocks            []modelQuotaBlockResponse `json:"modelQuotaBlocks,omitempty"`
+	// NextResetAt 是账号最近一次额度重置时间（见 nextQuotaReset 的取值优先级）；未知时省略。
+	NextResetAt     *time.Time `json:"nextResetAt,omitempty"`
+	NextResetSource string     `json:"nextResetSource,omitempty"`
 }
 
 type modelQuotaBlockResponse struct {
@@ -1607,7 +1610,63 @@ func newAccountResponse(value accountapp.View) accountResponse {
 		billing := newBillingResponse(*value.Billing)
 		result.Billing = &billing
 	}
+	result.NextResetAt, result.NextResetSource = nextQuotaReset(result, time.Now())
 	return result
+}
+
+// nextQuotaReset 选出账号下一次额度重置时间。数据来源与优先级：
+//  1. 额度耗尽待重置（account_quota_recovery）：优先用上游 Billing 周期结束时间 quota.periodEnd，
+//     其次用 next_probe_at（重置后安排的复检时间）。
+//  2. 否则取以下未来时间中最早的一个：Billing usage_period_end（Build 周额度，上游同步）、
+//     account_quota_windows.reset_at（Web/Console 模式窗口，上游同步）、
+//     account_model_quota_blocks.cooldown_until（单模型额度封禁解除时间）。
+//
+// 已过期的时间会被忽略（说明尚未重新同步），全部未知时返回 nil。
+func nextQuotaReset(value accountResponse, now time.Time) (*time.Time, string) {
+	future := func(t time.Time) bool { return !t.IsZero() && t.After(now) }
+	parse := func(raw string) (time.Time, bool) {
+		if raw == "" {
+			return time.Time{}, false
+		}
+		t, err := time.Parse(time.RFC3339Nano, raw)
+		return t, err == nil
+	}
+	if value.Quota.Status == string(accountapp.QuotaStatusWaitingReset) || value.Quota.Status == string(accountapp.QuotaStatusProbing) {
+		if t, ok := parse(value.Quota.PeriodEnd); ok && future(t) {
+			return &t, "quotaRecoveryPeriodEnd"
+		}
+		if value.Quota.NextProbeAt != nil && future(*value.Quota.NextProbeAt) {
+			t := *value.Quota.NextProbeAt
+			return &t, "quotaRecoveryProbe"
+		}
+	}
+	var best time.Time
+	source := ""
+	consider := func(t time.Time, label string) {
+		if future(t) && (best.IsZero() || t.Before(best)) {
+			best, source = t, label
+		}
+	}
+	if value.Billing != nil {
+		if t, ok := parse(value.Billing.UsagePeriodEnd); ok {
+			consider(t, "billingUsagePeriod")
+		}
+	}
+	if t, ok := parse(value.Quota.PeriodEnd); ok {
+		consider(t, "billingUsagePeriod")
+	}
+	for _, window := range value.QuotaWindows {
+		if window.ResetAt != nil && window.WindowSeconds > 0 {
+			consider(*window.ResetAt, "quotaWindow:"+window.Mode)
+		}
+	}
+	for _, block := range value.ModelQuotaBlocks {
+		consider(block.CooldownUntil, "modelQuotaBlock:"+block.Model)
+	}
+	if best.IsZero() {
+		return nil, ""
+	}
+	return &best, source
 }
 
 func buildBotFlagSourceResponse(provider accountdomain.Provider, flagged bool, source int) int {
