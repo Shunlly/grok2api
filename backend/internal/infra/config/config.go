@@ -99,7 +99,7 @@ type GatewayConfig struct {
 type RequestSlimmingConfig struct {
 	Enabled        bool `yaml:"enabled"`
 	KeepMediaTurns int  `yaml:"keepMediaTurns"`
-	// KeepImageTurns is the legacy (v3.4.10) alias of KeepMediaTurns.
+	// KeepImageTurns is the legacy (v3.4.9) alias of KeepMediaTurns.
 	KeepImageTurns      int `yaml:"keepImageTurns"`
 	KeepToolOutputTurns int `yaml:"keepToolOutputTurns"`
 }
