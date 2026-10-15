@@ -4,7 +4,7 @@ import "time"
 
 // AccountUsageStats 是账号真实请求用量快照（排除探针 / 考题 / 内部 Client Key）。
 // Total* 是当前额度周期 [PeriodStart, ComputedAt] 内的用量，每次刷新从审计表重算，周期滚动后归零；
-// Today* 每次刷新按 Asia/Shanghai 自然日从审计表重算。
+// Today* 每次刷新从 TodayStart = max(Asia/Shanghai 当日零点, PeriodStart) 起重算，不会超过周期值。
 type AccountUsageStats struct {
 	AccountID uint64
 
@@ -35,6 +35,7 @@ type AccountUsageStats struct {
 	PeriodStart  *time.Time
 	PeriodEnd    *time.Time
 	PeriodSource string
+	TodayStart   *time.Time
 }
 
 // UsagePeriod 是账号当前额度周期。Source 取值：billingUsagePeriod / quotaWindow:<mode> / rolling7d。
