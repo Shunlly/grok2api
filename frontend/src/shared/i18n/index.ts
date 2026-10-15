@@ -536,7 +536,7 @@ const resources = {
           noHits: "这个窗口没有降智请求", noNodes: "无节点数据", noAccounts: "没有匹配账号", noEvents: "无事件",
         },
         canary: {
-          detail: { verdict: "判定", passed: "通过", check: "检查", prompt: "题目", answer: "模型回答", reasoning: "思考过程（{{count}} 字）", noReasoning: "未记录思考文本", truncated: "已截断", showRaw: "查看原文", showRender: "查看渲染", model: "模型", input: "输入", output: "输出", reasoningTokens: "思考", total: "合计", firstToken: "首字", duration: "耗时", noArtifact: "这条结果没有记录产物（v3.3.4 之前的探测）" },
+          detail: { verdict: "判定", passed: "通过", check: "检查", prompt: "题目", answer: "模型回答", reasoning: "思考过程（{{count}} 字）", noReasoning: "未记录思考文本", truncated: "已截断", showRaw: "查看原文", showRender: "查看渲染", model: "模型", input: "输入", output: "输出", reasoningTokens: "思考", total: "合计", firstToken: "首字", duration: "耗时", noArtifact: "这条结果没有记录产物（v3.3.4 之前的探测）", received: "已收（字节/块）", errorCode: "错误码", idleTimeoutHint: "上游长时间不出字，被空闲超时提前结束", partial: "下方为中断前收到的部分内容，仅观察不计入账号" },
           tab: "金丝雀探测", title: "账号金丝雀探测", observeOnly: "仅观察：结果不影响调度、冷却或停用",
           description: "定时向每个 Build 账号固定发送轮换题目（确定答案的推理题 / SVG 结构题），对比号池思考 token 中位数、正确性与输出长度。连续 {{count}} 次失败且号池其余账号通过才标记可疑。",
           run: "立即探测一轮", running: "探测进行中", triggered: "已开始探测轮次 {{id}}", conflict: "已有探测轮次在运行", disabled: "未启用定时（可手动探测）",
@@ -1687,7 +1687,7 @@ const resources = {
           noHits: "No degrade requests in this window", noNodes: "No node data", noAccounts: "No matching accounts", noEvents: "No events",
         },
         canary: {
-          detail: { verdict: "Verdict", passed: "Passed", check: "Check", prompt: "Prompt", answer: "Answer", reasoning: "Reasoning ({{count}} chars)", noReasoning: "No reasoning text recorded", truncated: "truncated", showRaw: "Show raw", showRender: "Show render", model: "Model", input: "Input", output: "Output", reasoningTokens: "Reasoning", total: "Total", firstToken: "First token", duration: "Duration", noArtifact: "No artifact recorded for this result (probe ran before v3.3.4)" },
+          detail: { verdict: "Verdict", passed: "Passed", check: "Check", prompt: "Prompt", answer: "Answer", reasoning: "Reasoning ({{count}} chars)", noReasoning: "No reasoning text recorded", truncated: "truncated", showRaw: "Show raw", showRender: "Show render", model: "Model", input: "Input", output: "Output", reasoningTokens: "Reasoning", total: "Total", firstToken: "First token", duration: "Duration", noArtifact: "No artifact recorded for this result (probe ran before v3.3.4)", received: "Received (bytes/chunks)", errorCode: "Error code", idleTimeoutHint: "upstream stayed silent and the idle timeout ended it early", partial: "content below is what arrived before the cut; observe-only, not counted against the account" },
           tab: "Canary probes", title: "Account canary probes", observeOnly: "Observe-only: results never affect routing, cooldown or disabling",
           description: "Each Build account periodically receives the same rotating fixed task (known-answer reasoning / SVG structure) and is compared with the pool median reasoning tokens, correctness and length. Suspect only after {{count}} consecutive fails while the rest of the pool passes.",
           run: "Run a round now", running: "Round running", triggered: "Started round {{id}}", conflict: "A round is already running", disabled: "Schedule disabled (manual runs allowed)",

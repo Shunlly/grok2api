@@ -353,6 +353,7 @@ export interface CanaryArtifactDTO {
   inputTokens: number; outputTokens: number; reasoningTokens: number; totalTokens: number;
   responseModel: string; reasoningEffort: string; maxOutputTokens: number; firstTokenMs: number; durationMs: number;
   checkDetail: string; createdAt: string;
+  errorCode?: string; streamBytes?: number; streamChunks?: number;
 }
 export interface CanaryResultDetailDTO { result: CanaryResultDTO; artifact: CanaryArtifactDTO | null }
 

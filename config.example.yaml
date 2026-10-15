@@ -137,6 +137,8 @@ canary:
   reasoningEffort: high
   maxOutputTokens: 6000
   probeTimeout: 5m
+  # 首字/流间隔空闲超时：上游一直不出字时提前结束（不超过 probeTimeout）
+  idleTimeout: 75s
   retentionDays: 30
 
 # 账号自动恢复：只重检被判定为「临时失效」的账号（例如上游偶发 401），

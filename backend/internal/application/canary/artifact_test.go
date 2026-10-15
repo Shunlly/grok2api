@@ -50,7 +50,8 @@ func TestRoundStoresArtifactAndDetail(t *testing.T) {
 		t.Fatalf("artifact = %#v", a)
 	}
 	failed, err := service.ResultDetail(context.Background(), results[2].ID)
-	if err != nil || failed.Artifact == nil || !strings.HasPrefix(failed.Artifact.CheckDetail, "探测失败") {
+	if err != nil || failed.Artifact == nil || !strings.HasPrefix(failed.Artifact.CheckDetail, "探测失败") ||
+		failed.Artifact.ErrorCode != "canary_stream_idle_timeout" || failed.Artifact.StreamBytes != 120 || failed.Artifact.StreamChunks != 3 || failed.Artifact.Reasoning != "partial" {
 		t.Fatalf("failed detail = %#v err=%v", failed, err)
 	}
 	// Results recorded before artifacts existed have no artifact.
@@ -71,5 +72,16 @@ func TestTruncateBytesKeepsRuneBoundary(t *testing.T) {
 	}
 	if value, cut := canary.TruncateBytes("abc", 10); value != "abc" || cut {
 		t.Fatalf("got %q %v", value, cut)
+	}
+}
+
+func TestIdleTimeoutDefaultsAndCap(t *testing.T) {
+	s := NewService(Config{}, 1, &fakeProber{}, fakeAccounts{}, &memStore{rounds: map[string]bool{}}, nil)
+	if s.cfg.IdleTimeout != 75*time.Second {
+		t.Fatalf("idle = %v", s.cfg.IdleTimeout)
+	}
+	s = NewService(Config{ProbeTimeout: time.Minute, IdleTimeout: 2 * time.Minute}, 1, &fakeProber{}, fakeAccounts{}, &memStore{rounds: map[string]bool{}}, nil)
+	if s.cfg.IdleTimeout != time.Minute {
+		t.Fatalf("idle cap = %v", s.cfg.IdleTimeout)
 	}
 }

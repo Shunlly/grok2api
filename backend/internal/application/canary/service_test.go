@@ -22,7 +22,7 @@ func (f *fakeProber) ProbeAccountCanary(_ context.Context, in gatewayapp.CanaryP
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.fail[in.AccountID] {
-		return gatewayapp.CanaryProbeOutput{}, gatewayapp.ErrCanaryTransport
+		return gatewayapp.CanaryProbeOutput{ReasoningText: "partial", ReasoningChars: 7, StreamBytes: 120, StreamChunks: 3, ErrorCode: gatewayapp.CanaryErrIdleTimeout}, gatewayapp.ErrCanaryTransport
 	}
 	return gatewayapp.CanaryProbeOutput{Text: "Final answer: 401", VisibleChars: 17, ReasoningTokens: f.reasoning[in.AccountID], OutputTokens: 1000}, nil
 }
