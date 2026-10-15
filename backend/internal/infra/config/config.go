@@ -55,6 +55,7 @@ var buildForbiddenCodePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{
 // Config 表示后端运行配置。
 type Config struct {
 	Server            ServerConfig            `yaml:"server"`
+	Gateway           GatewayConfig           `yaml:"gateway"`
 	Frontend          FrontendConfig          `yaml:"frontend"`
 	Database          DatabaseConfig          `yaml:"database"`
 	RuntimeStore      RuntimeStoreConfig      `yaml:"runtimeStore"`
@@ -83,6 +84,13 @@ type ServerConfig struct {
 	ReadTimeout           Duration `yaml:"readTimeout"`
 	RequestTimeout        Duration `yaml:"requestTimeout"`
 	SwaggerEnabled        bool     `yaml:"swaggerEnabled"`
+}
+
+// GatewayConfig controls request admission before any upstream call.
+type GatewayConfig struct {
+	// MaxUpstreamRequestBytes rejects generation bodies above this size with 413
+	// before contacting xAI. 0 disables the guard.
+	MaxUpstreamRequestBytes int64 `yaml:"maxUpstreamRequestBytes"`
 }
 
 type FrontendConfig struct {
@@ -494,6 +502,12 @@ func resolveRelativePaths(cfg *Config, configPath string) error {
 func (c Config) Validate() error {
 	if strings.TrimSpace(c.Server.Listen) == "" {
 		return errors.New("server.listen 不能为空")
+	}
+	if c.Gateway.MaxUpstreamRequestBytes < 0 {
+		return fmt.Errorf("gateway.maxUpstreamRequestBytes 不能为负数")
+	}
+	if c.Gateway.MaxUpstreamRequestBytes > 0 && c.Gateway.MaxUpstreamRequestBytes > c.Server.MaxBodyBytes {
+		return fmt.Errorf("gateway.maxUpstreamRequestBytes 不能大于 server.maxBodyBytes")
 	}
 	if c.Server.MaxBodyBytes <= 0 || c.Server.MaxBodyBytes > maxServerBodyBytes {
 		return fmt.Errorf("server.maxBodyBytes 必须在 1 到 %d 字节之间", maxServerBodyBytes)
@@ -935,6 +949,7 @@ func defaultConfig() Config {
 			ReadTimeout:           Duration(15 * time.Minute),
 			RequestTimeout:        Duration(2 * time.Hour),
 		},
+		Gateway:  GatewayConfig{MaxUpstreamRequestBytes: 3 << 20},
 		Frontend: FrontendConfig{PublicAPIBaseURL: DefaultPublicAPIBaseURL, StaticPath: "./frontend/dist"},
 		Database: DatabaseConfig{
 			Driver:   "sqlite",

@@ -2,6 +2,16 @@
 
 Shunlly/grok2api fork of [chenyme/grok2api](https://github.com/chenyme/grok2api).
 
+## v3.4.8 — 2026-10-15
+
+### Added
+- 生成类请求（/v1/responses、/v1/chat/completions、/v1/messages、/responses/compact）新增请求体大小保护 `gateway.maxUpstreamRequestBytes`，默认 3 MiB（3145728），0 关闭。超过时在调用 xAI 之前直接返回 HTTP 413 `request_too_large`，提示「请求过大（X MB > 3 MB），xAI 上游无法处理，请在 Codex 中执行 /compact 或新开会话 / Request too large ...」；不占用账号、不重试、不切换账号，审计记录错误码 `request_too_large`。
+- 配置校验：`gateway.maxUpstreamRequestBytes` 不能为负数，且不能大于 `server.maxBodyBytes`（默认 32 MiB），保证超限请求能被完整读入并得到干净的 413。
+
+### Fixed
+- 大请求（≥ 2 MiB）遇到 Cloudflare HTML 5xx 时不再给账号加冷却。
+- 大请求在上游耗时 ≥ 30 秒后才返回 401 时，视为请求级失败：不标记需重新登录、不刷新凭据、不切换账号。
+
 ## v3.4.7 — 2026-10-15
 
 ### Changed

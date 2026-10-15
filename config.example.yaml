@@ -19,6 +19,11 @@ server:
   # [按需修改] 仅在本地或受信任环境开启，生产环境保持 false。
   swaggerEnabled: false
 
+gateway:
+  # 生成类请求（/v1/responses、/v1/chat/completions、/v1/messages）发往 xAI 前的请求体上限，默认 3 MiB。
+  # 超过时直接返回 413 request_too_large，不调用上游、不影响账号；0 表示关闭。不能大于 server.maxBodyBytes。
+  maxUpstreamRequestBytes: 3145728
+
 auth:
   # [通常不要修改] 管理端访问与刷新令牌有效期。
   accessTokenTTL: 15m
