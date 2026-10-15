@@ -240,6 +240,8 @@ type Credential struct {
 	MinimumRemaining    float64
 	// ContextWindow is the admin-selected Build context window (tokens); 0 = auto (largest the catalog offers).
 	ContextWindow   int
+	// AllowedModels restricts which upstream models this account may serve; empty = all.
+	AllowedModels []string
 	FailureCount    int
 	CooldownUntil   *time.Time
 	LastError       string
@@ -681,4 +683,19 @@ func (b Billing) IsExhausted(minimum float64) bool {
 		return true
 	}
 	return b.CreditUsagePercent >= 100 && (b.OnDemandCap > 0 || b.UsagePeriodType != "")
+}
+
+// AllowsModel reports whether the account's admin allowlist permits upstreamModel.
+// An empty allowlist permits every model (backward compatible default).
+func (c Credential) AllowsModel(upstreamModel string) bool {
+	if len(c.AllowedModels) == 0 {
+		return true
+	}
+	model := strings.TrimSpace(upstreamModel)
+	for _, allowed := range c.AllowedModels {
+		if strings.EqualFold(strings.TrimSpace(allowed), model) {
+			return true
+		}
+	}
+	return false
 }

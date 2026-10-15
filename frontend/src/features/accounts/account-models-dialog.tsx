@@ -71,7 +71,7 @@ export function AccountModelsDialog({ target, onClose }: { target: Target | null
 
   return (
     <Dialog open={target !== null} onOpenChange={(open) => { if (!open) onClose(); }}>
-      <DialogContent className="sm:max-w-3xl">
+      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>{t("accountModels.title", { name: target?.name ?? "" })}</DialogTitle>
           <DialogDescription>{t("accountModels.description")}</DialogDescription>

@@ -48,3 +48,17 @@ func TestBuildAccountModelsReasons(t *testing.T) {
 		t.Fatalf("blocked account = %+v", result)
 	}
 }
+
+func TestBuildAccountModelsAllowlistReason(t *testing.T) {
+	now := time.Date(2026, 10, 15, 0, 0, 0, 0, time.UTC)
+	synced := now.Add(-time.Hour)
+	account := accountResponse{ID: 7, Provider: "grok_build", Enabled: true, AuthStatus: "active", AllowedModels: []string{"a"}}
+	snapshot := repository.AccountModelSnapshot{
+		Capabilities: []string{"a", "b"}, LastSuccessAt: &synced,
+		Routes: []repository.AccountModelRoute{{PublicID: "A", UpstreamModel: "a", Enabled: true}, {PublicID: "B", UpstreamModel: "b", Enabled: true}},
+	}
+	result := buildAccountModels(account, snapshot, now)
+	if len(result.Usable) != 1 || result.Usable[0].ID != "A" || len(result.Unavailable) != 1 || result.Unavailable[0].Reason != "notAllowed" {
+		t.Fatalf("result = %+v", result)
+	}
+}

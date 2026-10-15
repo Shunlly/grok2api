@@ -33,6 +33,7 @@ import { VirtualTableBody } from "@/shared/components/virtual-table-body";
 import { useDebouncedValue } from "@/shared/hooks/use-debounced-value";
 import { cn } from "@/shared/lib/cn";
 import { formatCompactDateTime, formatDateTime, formatNumber } from "@/shared/lib/format";
+import { AccountAllowedModelsBadge, AccountAllowedModelsField } from "@/features/accounts/account-allowed-models";
 import { AccountModelsDialog } from "@/features/accounts/account-models-dialog";
 import { nextTableSort, type SortOrder, type TableSort } from "@/shared/lib/table-sort";
 import {
@@ -228,6 +229,7 @@ export function AccountsPage() {
     maxConcurrent: z.number().int().min(1, t("errors.positive")).max(256),
     minimumRemaining: z.number().min(0),
     contextWindow: z.number().int().min(0),
+    allowedModels: z.array(z.string()),
     cloudflareCookies: z.string().max(16 << 10, t("settings.invalidValue")),
     clearCloudflareCookies: z.boolean(),
     buildSuperEntitled: z.boolean(),
@@ -237,7 +239,7 @@ export function AccountsPage() {
   const form = useForm<AccountForm>({
     resolver: zodResolver(accountSchema),
     defaultValues: {
-      name: "", enabled: true, priority: 1, maxConcurrent: 8, minimumRemaining: 0, contextWindow: 0,
+      name: "", enabled: true, priority: 1, maxConcurrent: 8, minimumRemaining: 0, contextWindow: 0, allowedModels: [],
       cloudflareCookies: "", clearCloudflareCookies: false, buildSuperEntitled: false, buildRouteMode: "auto",
     },
   });
@@ -245,6 +247,7 @@ export function AccountsPage() {
   const clearCloudflareCookies = useWatch({ control: form.control, name: "clearCloudflareCookies" });
   const buildSuperEntitled = useWatch({ control: form.control, name: "buildSuperEntitled" });
   const buildRouteMode = useWatch({ control: form.control, name: "buildRouteMode" });
+  const allowedModelsValue = useWatch({ control: form.control, name: "allowedModels" });
   const contextWindowValue = useWatch({ control: form.control, name: "contextWindow" });
   const contextWindowCatalogQuery = useQuery({
     queryKey: ["accounts", "context-windows"],
@@ -360,6 +363,7 @@ export function AccountsPage() {
         minimumRemaining: values.minimumRemaining,
       };
       if (values.enabled !== editing.enabled) input.enabled = values.enabled;
+      if (values.allowedModels.join("\n") !== (editing.allowedModels ?? []).join("\n")) input.allowedModels = values.allowedModels;
       if (editing.provider !== "grok_build") {
         if (values.clearCloudflareCookies) input.clearCloudflareCookies = true;
         else if (values.cloudflareCookies.trim()) input.cloudflareCookies = values.cloudflareCookies;
@@ -1158,6 +1162,7 @@ export function AccountsPage() {
       maxConcurrent: account.maxConcurrent,
       minimumRemaining: account.minimumRemaining,
       contextWindow: account.contextWindow ?? 0,
+      allowedModels: account.allowedModels ?? [],
       cloudflareCookies: "",
       clearCloudflareCookies: false,
       buildSuperEntitled: account.buildSuperEntitled,
@@ -1563,7 +1568,7 @@ export function AccountsPage() {
 	                    <TableCell className="min-w-0"><AccountNameCell account={account} qualityFlag={qualityFlags.get(account.id)} /></TableCell>
                     <TableCell className="text-center whitespace-nowrap">{provider === "grok_web" ? <WebAccountType tier={account.webTier} /> : provider === "grok_console" ? <AccountTypeText label={t("accountType.console")} variant="free" /> : <AccountType quota={account.quota} planTier={account.planTier} planRaw={account.planRaw} />}</TableCell>
                     <TableCell className="text-center whitespace-nowrap"><AccountStatus account={account} /></TableCell>
-                    <TableCell className={provider === "grok_build" ? undefined : "px-6"}>{provider === "grok_web" ? <WebQuota windows={account.quotaWindows ?? []} locale={i18n.language} tier={account.webTier} /> : provider === "grok_console" ? <ConsoleQuota windows={account.quotaWindows ?? []} locale={i18n.language} /> : <AccountQuota quota={account.quota} billing={account.billing} locale={i18n.language} />}<AccountNextReset account={account} /><AccountPlanExpiry account={account} /><AccountLastUsed account={account} /><AccountQuotaSyncHint account={account} /><AccountUsageStats account={account} /><AccountCredentialWarning account={account} />
+                    <TableCell className={provider === "grok_build" ? undefined : "px-6"}>{provider === "grok_web" ? <WebQuota windows={account.quotaWindows ?? []} locale={i18n.language} tier={account.webTier} /> : provider === "grok_console" ? <ConsoleQuota windows={account.quotaWindows ?? []} locale={i18n.language} /> : <AccountQuota quota={account.quota} billing={account.billing} locale={i18n.language} />}<AccountNextReset account={account} /><AccountPlanExpiry account={account} /><AccountLastUsed account={account} /><AccountQuotaSyncHint account={account} /><AccountUsageStats account={account} /><AccountCredentialWarning account={account} /><AccountAllowedModelsBadge account={account} />
                       {account.modelQuotaBlocks?.length ? (
                         <Tooltip>
                           <TooltipTrigger asChild><span tabIndex={0} className="mt-0.5 inline-block cursor-help rounded bg-amber-100 px-1.5 text-[11px] font-medium text-amber-800 dark:bg-amber-950 dark:text-amber-300">{t("accounts.modelBlocks", { count: account.modelQuotaBlocks.length })}</span></TooltipTrigger>
@@ -1904,25 +1909,45 @@ export function AccountsPage() {
       </Dialog>
 
       <Dialog open={Boolean(editing)} onOpenChange={(open) => !open && setEditing(null)}>
-        <DialogContent>
-          <DialogHeader>
+        <DialogContent className="flex max-h-[90dvh] w-[calc(100%-1rem)] max-w-3xl flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl">
+          <DialogHeader className="shrink-0 border-b px-5 pb-3 pt-5 pr-12">
             <DialogTitle>{t("common.edit")} {editing?.name}</DialogTitle>
             <DialogDescription>{editing?.email ?? editing?.userId}</DialogDescription>
           </DialogHeader>
-          <form className="space-y-4" onSubmit={form.handleSubmit((values) => updateMutation.mutate(values))}>
-            <div className="space-y-2"><Label htmlFor="account-name">{t("accounts.name")}</Label><Input id="account-name" {...form.register("name")} />{form.formState.errors.name ? <p className="text-xs text-destructive">{form.formState.errors.name.message}</p> : null}</div>
-            <div className="flex items-center justify-between border-b py-2"><Label htmlFor="account-enabled">{accountEnabled ? t("common.enabled") : t("common.disabled")}</Label><Switch id="account-enabled" checked={accountEnabled} onCheckedChange={(checked) => form.setValue("enabled", checked)} /></div>
+          <form className="flex min-h-0 flex-1 flex-col" onSubmit={form.handleSubmit((values) => updateMutation.mutate(values))}>
+            <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-5 py-4">
+            <section className="space-y-4">
+            <h3 className="text-sm font-semibold">{t("accounts.editSections.basic")}</h3>
             <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2"><Label htmlFor="account-name">{t("accounts.name")}</Label><Input id="account-name" {...form.register("name")} />{form.formState.errors.name ? <p className="text-xs text-destructive">{form.formState.errors.name.message}</p> : null}</div>
+            <div className="flex items-center justify-between gap-2 self-end rounded-md border px-3 py-2"><Label htmlFor="account-enabled">{accountEnabled ? t("common.enabled") : t("common.disabled")}</Label><Switch id="account-enabled" checked={accountEnabled} onCheckedChange={(checked) => form.setValue("enabled", checked)} /></div>
               <div className="space-y-2"><Label htmlFor="account-priority">{t("accounts.priority")}</Label><Input id="account-priority" type="number" {...form.register("priority", { valueAsNumber: true })} /></div>
               <div className="space-y-2"><Label htmlFor="account-concurrency">{t("accounts.maxConcurrent")}</Label><Input id="account-concurrency" type="number" min="1" max="256" {...form.register("maxConcurrent", { valueAsNumber: true })} /></div>
+            <div className="space-y-2"><Label htmlFor="account-minimum">{t("accounts.minimumRemaining")}</Label><Input id="account-minimum" type="number" min="0" step="0.01" {...form.register("minimumRemaining", { valueAsNumber: true })} /></div>
             </div>
+            </section>
+            {editing ? (
+            <section className="space-y-2">
+            <h3 className="text-sm font-semibold">{t("accounts.editSections.status")}</h3>
+            <div className="grid gap-x-6 sm:grid-cols-2">
             {editing ? <div className="flex items-center justify-between border-b py-2 text-sm"><span>{t("accounts.nextReset")}</span><AccountNextReset account={editing} showLabel={false} className="text-sm tabular-nums" /></div> : null}
             {editing ? <div className="flex items-center justify-between border-b py-2 text-sm"><span>{t("accounts.planExpiry")}</span><AccountPlanExpiry account={editing} showLabel={false} className="w-fit text-sm tabular-nums" /></div> : null}
             {editing && editing.authStatus !== "reauthRequired" && credentialIssues(editing).length ? <div className="flex items-center justify-between border-b py-2 text-sm"><span>{t("accounts.credentialWarning.label")}</span><AccountCredentialWarning account={editing} className="w-fit cursor-help rounded bg-amber-100 px-1.5 text-xs font-medium text-amber-800 dark:bg-amber-950 dark:text-amber-300" /></div> : null}
-            {editing ? <div className="flex items-center justify-between border-b py-2 text-sm"><span>{t("accounts.usageStats.section")}</span><AccountUsageStats account={editing} variant="dialog" /></div> : null}
+            {editing ? <div className="flex items-center justify-between gap-2 border-b py-2 text-sm sm:col-span-2"><span>{t("accounts.usageStats.section")}</span><AccountUsageStats account={editing} variant="dialog" /></div> : null}
             {editing ? <div className="flex items-center justify-between border-b py-2 text-sm"><span>{t("accounts.lastUsed")}</span><AccountLastUsed account={editing} showLabel={false} className="w-fit text-sm tabular-nums" /></div> : null}
             {editing ? <div className="flex items-center justify-between border-b py-2 text-sm"><span>{t("accounts.quotaSyncHint.label")}</span><AccountQuotaSyncHint account={editing} className="w-fit text-sm tabular-nums" /></div> : null}
-            <div className="space-y-2"><Label htmlFor="account-minimum">{t("accounts.minimumRemaining")}</Label><Input id="account-minimum" type="number" min="0" step="0.01" {...form.register("minimumRemaining", { valueAsNumber: true })} /></div>
+            </div>
+            </section>
+            ) : null}
+            {editing ? (
+            <section className="space-y-3">
+            <h3 className="text-sm font-semibold">{t("accounts.editSections.models")}</h3>
+            <AccountAllowedModelsField key={editing.id} accountId={editing.id} value={allowedModelsValue ?? []} onChange={(next) => form.setValue("allowedModels", next, { shouldDirty: true })} />
+            </section>
+            ) : null}
+            <details className="group space-y-4 rounded-md border px-3 py-2">
+            <summary className="cursor-pointer select-none py-1 text-sm font-semibold">{t("accounts.editSections.advanced")}</summary>
+            <div className="space-y-4 pb-2 pt-2">
             {editing?.provider === "grok_build" ? (
               <div className="space-y-4">
                 <div className="space-y-2">
@@ -1988,7 +2013,10 @@ export function AccountsPage() {
                 {form.formState.errors.cloudflareCookies ? <p className="text-xs text-destructive">{form.formState.errors.cloudflareCookies.message}</p> : null}
               </div>
             ) : null}
-            <DialogFooter><Button type="button" variant="secondary" size="sm" onClick={() => setEditing(null)}>{t("common.cancel")}</Button><Button type="submit" size="sm" disabled={updateMutation.isPending}>{updateMutation.isPending ? <Spinner /> : null}{t("common.save")}</Button></DialogFooter>
+            </div>
+            </details>
+            </div>
+            <DialogFooter className="shrink-0 gap-2 border-t bg-background px-5 py-3"><Button type="button" variant="secondary" size="sm" onClick={() => setEditing(null)}>{t("common.cancel")}</Button><Button type="submit" size="sm" disabled={updateMutation.isPending}>{updateMutation.isPending ? <Spinner /> : null}{t("common.save")}</Button></DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
