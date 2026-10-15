@@ -2,6 +2,15 @@
 
 Shunlly/grok2api fork of [chenyme/grok2api](https://github.com/chenyme/grok2api).
 
+## v3.4.3 — 2026-10-15
+
+### Changed
+- 去掉账号列表和编辑弹窗里的「凭证过期 (Access Token)」显示：Access Token 约 6 小时自动续期一次，平时显示没有意义。API 字段（`expiresAt` / `expiresSource` / `expiresAutoRenew`）保留不变，兼容旧调用方。
+
+### Added
+- 「凭证需重新登录」琥珀色提醒：只在 OAuth（Build）凭证无法自动续期时出现，包括没有 refresh token、续期失败次数 > 0、Access Token 已过期超过 10 分钟仍未续上。悬停显示原因、续期失败次数、最近错误、上次续期时间和 Access Token 过期时间（UTC+8）。
+- 账号已是 `reauthRequired` 时，状态列已有「需重新登录」徽章，不再重复显示这个提醒。SSO（Web）账号没有 refresh token，不会因此误报。
+
 ## v3.4.2 — 2026-10-15
 
 ### Added
