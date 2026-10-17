@@ -90,7 +90,7 @@ export function DashboardPage() {
 
       <DashboardOverview dashboard={dashboard} locale={i18n.language} loading={loading} />
 
-      <div className="grid items-stretch gap-2 xl:grid-cols-[minmax(0,3fr)_minmax(360px,2fr)]">
+      <div className="grid grid-cols-1 items-stretch gap-2 *:min-w-0 xl:grid-cols-[minmax(0,3fr)_minmax(360px,2fr)]">
         <DashboardTrend
           dashboard={dashboard}
           locale={i18n.language}
@@ -99,7 +99,7 @@ export function DashboardPage() {
         <DashboardProviderDistribution dashboard={dashboard} locale={i18n.language} loading={loading} />
       </div>
 
-      <div className="grid items-stretch gap-2 xl:grid-cols-[minmax(0,3fr)_minmax(360px,2fr)]">
+      <div className="grid grid-cols-1 items-stretch gap-2 *:min-w-0 xl:grid-cols-[minmax(0,3fr)_minmax(360px,2fr)]">
         <DashboardTopModels dashboard={dashboard} locale={i18n.language} loading={loading} />
         <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-2 xl:h-full">
           <DashboardActivity dashboard={dashboard} locale={i18n.language} loading={loading} />

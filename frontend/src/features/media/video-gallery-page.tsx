@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, dialogMobileFullscreen } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { Table, TableActionCell, TableActionHead, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -245,7 +245,7 @@ export function VideoGalleryPage() {
       </AlertDialog>
 
       <Dialog open={Boolean(previewing)} onOpenChange={(open) => !open && setPreviewing(null)}>
-        <DialogContent className="max-h-[calc(100vh-2rem)] max-w-4xl overflow-hidden">
+        <DialogContent className={cn("max-h-[calc(100vh-2rem)] max-w-4xl overflow-hidden", dialogMobileFullscreen)}>
           <DialogHeader className="min-w-0 pr-8">
             <DialogTitle className="line-clamp-2 min-w-0 break-words leading-6" title={previewing?.prompt || undefined}>{previewing?.prompt || t("media.videos.previewTitle")}</DialogTitle>
             <DialogDescription className="min-w-0 truncate font-mono" title={previewing?.id}>{previewing?.id}</DialogDescription>

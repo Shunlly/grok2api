@@ -193,7 +193,7 @@ export function RequestAuditsPage() {
       />
 
       <section className="space-y-2" aria-label={t("audits.usageSummary")}>
-        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid grid-cols-2 gap-2 xl:grid-cols-4">
           <AuditMetric icon={Activity} loading={summaryLoading} label={t("audits.totalRequests")} value={formatNumber(summary?.usage.requests ?? 0, i18n.language, 0)} detail={t("audits.requestBreakdown", { success: formatNumber(summary?.usage.successfulRequests ?? 0, i18n.language, 0), failed: formatNumber(summary?.usage.failedRequests ?? 0, i18n.language, 0) })} />
           <AuditMetric icon={WholeWord} loading={summaryLoading} label={t("audits.totalTokens")} value={formatNumber(summary?.usage.totalTokens ?? 0, i18n.language, 0)} detail={t("audits.tokenEfficiency", { cacheRate: formatNumber(cacheRate, i18n.language, 1) })} />
           <AuditMetric icon={CircleCheck} loading={summaryLoading} label={t("audits.successRate")} value={`${formatNumber(summary?.usage.successRate ?? 0, i18n.language, 1)}%`} detail={t("audits.averageDuration", { duration: formatDuration(summary?.usage.averageDurationMs ?? 0) })} />
@@ -279,6 +279,8 @@ export function RequestAuditsPage() {
         {auditsQuery.isError ? <ErrorState message={auditsQuery.error.message} onRetry={() => void auditsQuery.refetch()} /> : null}
         {result && result.items.length === 0 ? <EmptyState /> : null}
         {auditsQuery.isPending || (result && result.items.length > 0) ? (
+          <>
+          <div className="max-md:hidden">
           <Table viewportRows={20} rowHeight={96} aria-busy={auditsQuery.isFetching} className={cn("min-w-[1008px] table-fixed text-xs transition-opacity", auditsQuery.isPlaceholderData && "pointer-events-none opacity-60")}>
             <colgroup>
               <col className="w-36" />
@@ -306,12 +308,48 @@ export function RequestAuditsPage() {
               <VirtualTableBody items={result?.items ?? []} colSpan={7} rowHeight={96} overscan={6} renderRow={renderAuditRow} />
             )}
           </Table>
+          </div>
+          <div className={cn("space-y-2 md:hidden", auditsQuery.isPlaceholderData && "pointer-events-none opacity-60")} aria-busy={auditsQuery.isFetching}>
+            {auditsQuery.isPending ? <div className="flex justify-center py-8"><Spinner /></div> : (result?.items ?? []).map((audit) => <AuditCard key={audit.id} audit={audit} locale={i18n.language} onOpen={openAudit} />)}
+          </div>
+          </>
         ) : null}
       </DataTableShell>
       <RequestAuditDetailDialog key={selectedAudit?.id ?? "closed"} audit={selectedAudit} open={selectedAudit !== null} onOpenChange={(open) => !open && setSelectedAudit(null)} />
     </div>
   );
 }
+
+const AuditCard = memo(function AuditCard({ audit, locale, onOpen }: { audit: AuditDTO; locale: string; onOpen: (audit: AuditDTO) => void }) {
+  return (
+    <article className="space-y-2 rounded-lg border bg-card p-3 text-xs">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <ModelRouteValue
+            model={audit.modelPublicId || `#${audit.modelRouteId}`}
+            upstreamModel={audit.modelUpstreamModel || "-"}
+            account={audit.accountName || (audit.accountId ? `#${audit.accountId}` : "-")}
+            clientKey={audit.clientKeyName || `#${audit.clientKeyId}`}
+            clientIp={audit.clientIp}
+            requestId={audit.requestId}
+            provider={audit.provider}
+            operation={audit.operation}
+            sources={audit.numSourcesUsed}
+          />
+        </div>
+        <div className="shrink-0 text-right"><AuditStatus audit={audit} onOpen={() => onOpen(audit)} /></div>
+      </div>
+      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 border-t pt-2">
+        <BillingValue audit={audit} />
+        <UsageDetails audit={audit} locale={locale} />
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-muted-foreground">
+        <ResponsePerformance audit={audit} locale={locale} />
+        <span className="flex items-center gap-2"><EgressValue audit={audit} /><time className="tabular-nums" dateTime={audit.createdAt}>{formatDateTime(audit.createdAt, locale)}</time></span>
+      </div>
+    </article>
+  );
+});
 
 const AuditRow = memo(function AuditRow({ audit, locale, onOpen }: { audit: AuditDTO; locale: string; onOpen: (audit: AuditDTO) => void }) {
   const createdAt = formatCompactDateTime(audit.createdAt, locale);
@@ -496,7 +534,7 @@ function BillingFormula({ component, locale }: { component: AuditBillingComponen
 function AuditMetric({ icon: Icon, label, value, detail, tooltip, fullValue, loading }: { icon: LucideIcon; label: string; value: string; detail?: string; tooltip?: string; fullValue?: string; loading: boolean }) {
   const { t } = useTranslation();
   return (
-    <article className="min-h-28 rounded-lg bg-card p-4" aria-busy={loading}>
+    <article className="min-h-24 min-w-0 rounded-lg bg-card p-3 sm:min-h-28 sm:p-4" aria-busy={loading}>
       <header className="flex min-h-5 items-center justify-between gap-3">
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <span>{label}</span>
@@ -509,7 +547,7 @@ function AuditMetric({ icon: Icon, label, value, detail, tooltip, fullValue, loa
         </div>
         <Icon className="size-4 shrink-0 text-muted-foreground" />
       </header>
-      <div className="mt-3 flex min-h-8 items-center text-2xl font-medium tracking-tight tabular-nums">
+      <div className="mt-2 flex min-h-8 items-center text-xl font-medium tracking-tight tabular-nums sm:mt-3 sm:text-2xl">
         {loading ? <Spinner /> : fullValue ? (
           <Tooltip>
             <TooltipTrigger asChild><span className="cursor-help" tabIndex={0}>{value}</span></TooltipTrigger>
@@ -524,7 +562,7 @@ function AuditMetric({ icon: Icon, label, value, detail, tooltip, fullValue, loa
 
 function AuditTokenMetric({ icon: Icon, label, value, loading }: { icon: LucideIcon; label: string; value: string; loading: boolean }) {
   return (
-    <div className="flex min-h-11 min-w-0 items-center justify-between gap-3 rounded-lg bg-muted/45 px-4 py-2">
+    <div className="flex min-h-11 min-w-0 items-center justify-between gap-2 rounded-lg bg-muted/45 px-3 py-2 sm:gap-3 sm:px-4">
       <span className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground"><Icon className="size-3.5 shrink-0" />{label}</span>
       <span className="flex min-h-5 min-w-8 items-center justify-end truncate text-sm font-medium tabular-nums" title={loading ? undefined : value}>{loading ? <Spinner className="size-3.5" /> : value}</span>
     </div>

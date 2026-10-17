@@ -12,7 +12,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, dialogMobileFullscreen } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -1336,6 +1336,52 @@ export function AccountsPage() {
   const detectInvalidItems = detectItems.filter((item) => item.outcome === "invalid");
   const detectVisibleItems = detectMode === "selected" ? detectItems : detectInvalidItems;
 
+  const renderAccountQuota = (account: AccountDTO) => (<>{provider === "grok_web" ? <WebQuota windows={account.quotaWindows ?? []} locale={i18n.language} tier={account.webTier} /> : provider === "grok_console" ? <ConsoleQuota windows={account.quotaWindows ?? []} locale={i18n.language} /> : <AccountQuota quota={account.quota} billing={account.billing} locale={i18n.language} />}<AccountNextReset account={account} /><AccountPlanExpiry account={account} /><AccountLastUsed account={account} /><AccountQuotaSyncHint account={account} /><AccountUsageStats account={account} /><AccountCredentialWarning account={account} /><AccountAllowedModelsBadge account={account} />
+                      {account.modelQuotaBlocks?.length ? (
+                        <Tooltip>
+                          <TooltipTrigger asChild><span tabIndex={0} className="mt-0.5 inline-block cursor-help rounded bg-amber-100 px-1.5 text-[11px] font-medium text-amber-800 dark:bg-amber-950 dark:text-amber-300">{t("accounts.modelBlocks", { count: account.modelQuotaBlocks.length })}</span></TooltipTrigger>
+                          <TooltipContent><div className="space-y-0.5 text-xs">{account.modelQuotaBlocks.map((block) => <div key={block.model}>{t("accounts.modelBlockItem", { model: block.model, reason: block.reason, until: new Date(block.cooldownUntil).toLocaleString(i18n.language) })}</div>)}</div></TooltipContent>
+                        </Tooltip>
+                      ) : null}</>);
+  const renderAccountCredential = (account: AccountDTO) => (<>{account.refreshable ? (
+                        <Tooltip>
+                          <TooltipTrigger asChild><span tabIndex={0} className="cursor-help font-medium text-emerald-700 dark:text-emerald-300">{t("accountCredential.autoRefresh")}</span></TooltipTrigger>
+                          <TooltipContent>{account.expiresAt ? t("accountCredential.expiresAt", { time: formatDateTime(account.expiresAt, i18n.language) }) : t("accountCredential.expiryUnknown")}</TooltipContent>
+                        </Tooltip>
+                      ) : <span className="font-medium text-amber-700 dark:text-amber-300">{t("accountCredential.noAutoRefresh")}</span>}</>);
+  const renderAccountActions = (account: AccountDTO) => (<><DropdownMenu>
+                        <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="size-8" aria-label={t("common.actions")}><MoreHorizontal /></Button></DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => beginEdit(account)}><Pencil />{t("common.edit")}</DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setModelsTarget({ id: account.id, name: account.name || account.email || account.id })}><Boxes />{t("accountModels.action")}</DropdownMenuItem>
+                          {provider === "grok_web" ? <DropdownMenuItem onClick={() => openWebConversion([account.id])}><ArrowRight />{t("accountConversion.action")}</DropdownMenuItem> : null}
+                          {provider === "grok_web" ? (
+                            <WebAccountSettingsMenu
+                              account={account}
+                              disabled={bulkTaskPending}
+                              onConfirm={setWebConfirmationTarget}
+                            />
+                          ) : null}
+                          {provider === "grok_build" ? <DropdownMenuItem onClick={() => tokenMutation.mutate(account.id)}><RotateCw />{t("accounts.refreshToken")}</DropdownMenuItem> : null}
+                          <DropdownMenuItem onClick={() => recheckMutation.mutate(account.id)} disabled={recheckMutation.isPending}>
+                            <RotateCw />{t("accounts.recheck")}
+                          </DropdownMenuItem>
+                          {account.cooldownUntil && new Date(account.cooldownUntil) > new Date() ? (
+                            <DropdownMenuItem onClick={() => clearCooldownMutation.mutate(account.id)} disabled={clearCooldownMutation.isPending}>
+                              <TimerOff />{t("accounts.clearCooldown")}
+                            </DropdownMenuItem>
+                          ) : null}
+                          {account.modelQuotaBlocks?.length ? (
+                            <DropdownMenuItem onClick={() => clearModelBlocksMutation.mutate(account.id)} disabled={clearModelBlocksMutation.isPending}>
+                              <TimerOff />{t("accounts.clearModelBlocks")}
+                            </DropdownMenuItem>
+                          ) : null}
+                          <DropdownMenuItem onClick={() => provider === "grok_build" ? billingMutation.mutate(account.id) : quotaMutation.mutate(account.id)}><RefreshCw />{provider === "grok_build" ? t("accounts.refreshBilling") : t("accounts.refreshModeQuota")}</DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => { resetLinkedDeleteState(); setDeleting(account); }}><Trash2 />{t("common.delete")}</DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu></>);
+
   return (
     <div className="space-y-5">
       <header className="flex min-h-8 items-center">
@@ -1343,7 +1389,7 @@ export function AccountsPage() {
         <QuotaAutoSyncBadge />
         <p className="sr-only">{t("console.accountsDescription")}</p>
       </header>
-      <section className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+      <section className="grid grid-cols-2 gap-2 lg:grid-cols-3 xl:grid-cols-5">
         <AccountMetricPanel tone="text-quota-product-1" icon={<SquareTerminal />} loading={summaryLoading} label={t("accounts.buildAccountCount")} value={summaryUnavailable ? "-" : formatNumber(buildSummary.total, i18n.language, 0)} detail={t("accounts.routableAccountCount", { count: formatNumber(buildSummary.available, i18n.language, 0) })} />
         <AccountMetricPanel tone="text-quota-product-2" icon={<Compass />} loading={summaryLoading} label={t("accounts.webAccountCount")} value={summaryUnavailable ? "-" : formatNumber(webSummary.total, i18n.language, 0)} detail={t("accounts.routableAccountCount", { count: formatNumber(webSummary.available, i18n.language, 0) })} />
         <AccountMetricPanel tone="text-quota-product-4" icon={<Webhook />} loading={summaryLoading} label={t("accounts.consoleAccountCount")} value={summaryUnavailable ? "-" : formatNumber(consoleSummary.total, i18n.language, 0)} detail={t("accounts.routableAccountCount", { count: formatNumber(consoleSummary.available, i18n.language, 0) })} />
@@ -1368,19 +1414,19 @@ export function AccountsPage() {
       </section>
       <div className="space-y-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <Tabs value={provider} onValueChange={(value) => changeProvider(value as AccountProvider)}>
-            <TabsList>
+          <Tabs className="min-w-0 max-w-full" value={provider} onValueChange={(value) => changeProvider(value as AccountProvider)}>
+            <TabsList className="max-w-full">
               <TabsTrigger value="grok_build" className="gap-1.5">
                 <SquareTerminal className="size-3.5 text-quota-product-1" />
-                <span>Grok Build</span>
+                <span><span className="max-sm:hidden">Grok </span>Build</span>
               </TabsTrigger>
               <TabsTrigger value="grok_web" className="gap-1.5">
                 <Compass className="size-3.5 text-quota-product-2" />
-                <span>Grok Web</span>
+                <span><span className="max-sm:hidden">Grok </span>Web</span>
               </TabsTrigger>
               <TabsTrigger value="grok_console" className="gap-1.5">
                 <Webhook className="size-3.5 text-quota-product-4" />
-                <span>Grok Console</span>
+                <span><span className="max-sm:hidden">Grok </span>Console</span>
               </TabsTrigger>
             </TabsList>
           </Tabs>
@@ -1532,6 +1578,8 @@ export function AccountsPage() {
         {accountsQuery.isError ? <ErrorState message={accountsQuery.error.message} onRetry={() => void accountsQuery.refetch()} /> : null}
         {result && result.items.length === 0 ? <EmptyState /> : null}
         {accountsQuery.isPending || (result && result.items.length > 0) ? (
+          <>
+          <div className="max-md:hidden">
           <Table viewportRows={20} rowHeight={56} className="table-fixed border-collapse min-w-[780px] xl:min-w-[960px] 2xl:min-w-[1080px]">
             <colgroup>
               <col style={{ width: "3%" }} />
@@ -1568,61 +1616,35 @@ export function AccountsPage() {
 	                    <TableCell className="min-w-0"><AccountNameCell account={account} qualityFlag={qualityFlags.get(account.id)} /></TableCell>
                     <TableCell className="text-center whitespace-nowrap">{provider === "grok_web" ? <WebAccountType tier={account.webTier} /> : provider === "grok_console" ? <AccountTypeText label={t("accountType.console")} variant="free" /> : <AccountType quota={account.quota} planTier={account.planTier} planRaw={account.planRaw} />}</TableCell>
                     <TableCell className="text-center whitespace-nowrap"><AccountStatus account={account} /></TableCell>
-                    <TableCell className={provider === "grok_build" ? undefined : "px-6"}>{provider === "grok_web" ? <WebQuota windows={account.quotaWindows ?? []} locale={i18n.language} tier={account.webTier} /> : provider === "grok_console" ? <ConsoleQuota windows={account.quotaWindows ?? []} locale={i18n.language} /> : <AccountQuota quota={account.quota} billing={account.billing} locale={i18n.language} />}<AccountNextReset account={account} /><AccountPlanExpiry account={account} /><AccountLastUsed account={account} /><AccountQuotaSyncHint account={account} /><AccountUsageStats account={account} /><AccountCredentialWarning account={account} /><AccountAllowedModelsBadge account={account} />
-                      {account.modelQuotaBlocks?.length ? (
-                        <Tooltip>
-                          <TooltipTrigger asChild><span tabIndex={0} className="mt-0.5 inline-block cursor-help rounded bg-amber-100 px-1.5 text-[11px] font-medium text-amber-800 dark:bg-amber-950 dark:text-amber-300">{t("accounts.modelBlocks", { count: account.modelQuotaBlocks.length })}</span></TooltipTrigger>
-                          <TooltipContent><div className="space-y-0.5 text-xs">{account.modelQuotaBlocks.map((block) => <div key={block.model}>{t("accounts.modelBlockItem", { model: block.model, reason: block.reason, until: new Date(block.cooldownUntil).toLocaleString(i18n.language) })}</div>)}</div></TooltipContent>
-                        </Tooltip>
-                      ) : null}</TableCell>
-                    {provider === "grok_build" ? <TableCell className="whitespace-nowrap pl-4 text-xs">
-                      {account.refreshable ? (
-                        <Tooltip>
-                          <TooltipTrigger asChild><span tabIndex={0} className="cursor-help font-medium text-emerald-700 dark:text-emerald-300">{t("accountCredential.autoRefresh")}</span></TooltipTrigger>
-                          <TooltipContent>{account.expiresAt ? t("accountCredential.expiresAt", { time: formatDateTime(account.expiresAt, i18n.language) }) : t("accountCredential.expiryUnknown")}</TooltipContent>
-                        </Tooltip>
-                      ) : <span className="font-medium text-amber-700 dark:text-amber-300">{t("accountCredential.noAutoRefresh")}</span>}
-	                    </TableCell> : null}
+                    <TableCell className={provider === "grok_build" ? undefined : "px-6"}>{renderAccountQuota(account)}</TableCell>
+                    {provider === "grok_build" ? <TableCell className="whitespace-nowrap pl-4 text-xs">{renderAccountCredential(account)}</TableCell> : null}
                     <TableCell className="whitespace-nowrap text-xs text-muted-foreground">{formatDateTime(account.createdAt, i18n.language)}</TableCell>
-                    <TableActionCell>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="size-8" aria-label={t("common.actions")}><MoreHorizontal /></Button></DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => beginEdit(account)}><Pencil />{t("common.edit")}</DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => setModelsTarget({ id: account.id, name: account.name || account.email || account.id })}><Boxes />{t("accountModels.action")}</DropdownMenuItem>
-                          {provider === "grok_web" ? <DropdownMenuItem onClick={() => openWebConversion([account.id])}><ArrowRight />{t("accountConversion.action")}</DropdownMenuItem> : null}
-                          {provider === "grok_web" ? (
-                            <WebAccountSettingsMenu
-                              account={account}
-                              disabled={bulkTaskPending}
-                              onConfirm={setWebConfirmationTarget}
-                            />
-                          ) : null}
-                          {provider === "grok_build" ? <DropdownMenuItem onClick={() => tokenMutation.mutate(account.id)}><RotateCw />{t("accounts.refreshToken")}</DropdownMenuItem> : null}
-                          <DropdownMenuItem onClick={() => recheckMutation.mutate(account.id)} disabled={recheckMutation.isPending}>
-                            <RotateCw />{t("accounts.recheck")}
-                          </DropdownMenuItem>
-                          {account.cooldownUntil && new Date(account.cooldownUntil) > new Date() ? (
-                            <DropdownMenuItem onClick={() => clearCooldownMutation.mutate(account.id)} disabled={clearCooldownMutation.isPending}>
-                              <TimerOff />{t("accounts.clearCooldown")}
-                            </DropdownMenuItem>
-                          ) : null}
-                          {account.modelQuotaBlocks?.length ? (
-                            <DropdownMenuItem onClick={() => clearModelBlocksMutation.mutate(account.id)} disabled={clearModelBlocksMutation.isPending}>
-                              <TimerOff />{t("accounts.clearModelBlocks")}
-                            </DropdownMenuItem>
-                          ) : null}
-                          <DropdownMenuItem onClick={() => provider === "grok_build" ? billingMutation.mutate(account.id) : quotaMutation.mutate(account.id)}><RefreshCw />{provider === "grok_build" ? t("accounts.refreshBilling") : t("accounts.refreshModeQuota")}</DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => { resetLinkedDeleteState(); setDeleting(account); }}><Trash2 />{t("common.delete")}</DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableActionCell>
+                    <TableActionCell>{renderAccountActions(account)}</TableActionCell>
                   </TableRow>
                 )}
               />
             )}
           </Table>
+          </div>
+          <div className="space-y-2 md:hidden" aria-busy={accountsQuery.isPending}>
+            {accountsQuery.isPending ? <div className="flex justify-center py-8"><Spinner /></div> : (result?.items ?? []).map((account) => (
+              <article key={account.id} className="rounded-lg border bg-card p-3" data-state={selected.has(account.id) ? "selected" : undefined}>
+                <div className="flex items-start gap-2">
+                  <Checkbox className="mt-1" checked={selected.has(account.id)} onCheckedChange={(checked) => toggleAccount(account.id, checked === true)} aria-label={t("common.selectItem", { name: account.name })} />
+                  <div className="min-w-0 flex-1"><AccountNameCell account={account} qualityFlag={qualityFlags.get(account.id)} /></div>
+                  <div className="-mr-1 -mt-1 shrink-0">{renderAccountActions(account)}</div>
+                </div>
+                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 pl-6 text-xs">
+                  <span className="inline-flex items-center gap-1"><span className="text-muted-foreground">{t("accountType.label")}</span>{provider === "grok_web" ? <WebAccountType tier={account.webTier} /> : provider === "grok_console" ? <AccountTypeText label={t("accountType.console")} variant="free" /> : <AccountType quota={account.quota} planTier={account.planTier} planRaw={account.planRaw} />}</span>
+                  <span className="inline-flex items-center gap-1"><span className="text-muted-foreground">{t("accounts.status")}</span><AccountStatus account={account} /></span>
+                  {provider === "grok_build" ? <span className="inline-flex items-center gap-1"><span className="text-muted-foreground">{t("accountCredential.label")}</span>{renderAccountCredential(account)}</span> : null}
+                </div>
+                <div className="mt-2 min-w-0 border-t pt-2 pl-6 text-xs">{renderAccountQuota(account)}</div>
+                <div className="mt-1.5 pl-6 text-[11px] text-muted-foreground">{t("accounts.createdAt")} {formatDateTime(account.createdAt, i18n.language)}</div>
+              </article>
+            ))}
+          </div>
+          </>
         ) : null}
         </DataTableShell>
       </div>
@@ -1909,7 +1931,7 @@ export function AccountsPage() {
       </Dialog>
 
       <Dialog open={Boolean(editing)} onOpenChange={(open) => !open && setEditing(null)}>
-        <DialogContent className="flex max-h-[90dvh] w-[calc(100%-1rem)] max-w-3xl flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl">
+        <DialogContent className={cn("flex max-h-[90dvh] w-[calc(100%-1rem)] max-w-3xl flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl", dialogMobileFullscreen)}>
           <DialogHeader className="shrink-0 border-b px-5 pb-3 pt-5 pr-12">
             <DialogTitle>{t("common.edit")} {editing?.name}</DialogTitle>
             <DialogDescription>{editing?.email ?? editing?.userId}</DialogDescription>
@@ -2424,12 +2446,12 @@ function AccountMetricPanel({ icon, label, value, detail, detailItems, loading, 
   tone: string;
 }) {
   return (
-    <div className="min-h-28 rounded-lg bg-card p-4" aria-busy={loading}>
+    <div className="min-h-24 min-w-0 rounded-lg bg-card p-3 sm:min-h-28 sm:p-4" aria-busy={loading}>
       <div className="flex min-h-5 items-center justify-between gap-3">
         <span className="text-xs text-muted-foreground">{label}</span>
         <span className={cn("flex size-5 items-center justify-center [&_svg]:size-4", tone)}>{icon}</span>
       </div>
-      <div className="mt-3 flex min-h-8 items-center text-2xl font-medium tracking-tight tabular-nums">{loading ? <Spinner /> : value}</div>
+      <div className="mt-2 flex min-h-8 items-center text-xl font-medium tracking-tight tabular-nums sm:mt-3 sm:text-2xl">{loading ? <Spinner /> : value}</div>
       {detailItems ? (
         <div className={cn("-ml-1.5 mt-1.5 flex min-h-5 flex-wrap gap-1 text-[11px] leading-4", loading && "invisible")} title={detail}>
           {detailItems.map((item) => (

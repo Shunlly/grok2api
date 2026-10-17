@@ -275,7 +275,7 @@ export function AppShell() {
             </Button>
           </header>
 
-          <main className={cn("mx-auto w-full max-w-[1280px] flex-1 px-5 sm:px-8", isMediaWorkspace ? "pt-8 pb-0 lg:pt-20" : "py-8 lg:py-20")}>
+          <main className={cn("mx-auto w-full min-w-0 max-w-[1280px] flex-1 px-4 sm:px-8", isMediaWorkspace ? "pt-5 pb-0 sm:pt-8 lg:pt-20" : "py-5 sm:py-8 lg:py-20")}>
             <Outlet />
           </main>
           {!isMediaWorkspace ? <SiteFooter /> : null}
