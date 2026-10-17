@@ -450,7 +450,7 @@ func shouldHoldQualityStream(input Input, ownership *inferencedomain.ResponseOwn
 	// turn. Holding it can quarantine a healthy account for producing the
 	// expected summary without streamed reasoning. Keep both compaction forms
 	// excluded even if a caller reaches this gate without skipQualityHold.
-	if isResponsesCompactionRequest(input.Body) {
+	if input.auditOperation == audit.OperationCompaction || isResponsesCompactionRequest(input.Body) {
 		return false
 	}
 	if route.Provider != accountdomain.ProviderBuild && route.Provider != accountdomain.ProviderConsole {

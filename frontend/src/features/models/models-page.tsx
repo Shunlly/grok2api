@@ -11,6 +11,7 @@ import { z } from "zod";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { applyBoundAccountSelection } from "@/features/models/bound-accounts";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, dialogMobileFullscreen } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -181,6 +182,10 @@ export function ModelsPage() {
   function toggleBoundAccount(id: string, checked: boolean): void {
     const current = form.getValues("accountIds");
     form.setValue("accountIds", checked ? [...new Set([...current, id])] : current.filter((value) => value !== id), { shouldValidate: true });
+  }
+
+  function setVisibleAccountsBound(ids: string[], checked: boolean): void {
+    form.setValue("accountIds", applyBoundAccountSelection(form.getValues("accountIds"), ids, checked), { shouldValidate: true });
   }
 
   const accountOptions = accountOptionsQuery.data?.items ?? [];
@@ -380,6 +385,16 @@ export function ModelsPage() {
                 {bindingMode ? (
                   <div className="mt-3">
                     <div className="overflow-hidden rounded-md bg-background/55 p-1">
+                      {visibleAccountOptions.length > 0 ? (
+                        <div className="mb-1 flex flex-wrap items-center justify-end gap-1.5 px-1 pt-1">
+                          <Button type="button" variant="outline" size="sm" className="h-8 px-3 text-xs sm:h-7 sm:px-2" disabled={visibleAccountOptions.every((account) => selectedAccountIDs.includes(account.id))} onClick={() => setVisibleAccountsBound(visibleAccountOptions.map((account) => account.id), true)}>
+                            {normalizedAccountSearch ? t("models.selectAllFilteredAccounts", { count: visibleAccountOptions.length }) : t("models.selectAllAccounts")}
+                          </Button>
+                          <Button type="button" variant="ghost" size="sm" className="h-8 px-3 text-xs sm:h-7 sm:px-2" disabled={!visibleAccountOptions.some((account) => selectedAccountIDs.includes(account.id))} onClick={() => setVisibleAccountsBound(visibleAccountOptions.map((account) => account.id), false)}>
+                            {normalizedAccountSearch ? t("models.clearFilteredAccounts") : t("models.clearAccounts")}
+                          </Button>
+                        </div>
+                      ) : null}
                       <div className="relative">
                         <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
                         <Input className="bg-transparent pl-8 shadow-none focus-visible:bg-background/70" value={accountSearch} onChange={(event) => setAccountSearch(event.target.value)} placeholder={t("models.searchAccounts")} />
