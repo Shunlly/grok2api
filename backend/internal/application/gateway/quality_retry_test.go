@@ -1334,6 +1334,15 @@ func TestShouldHoldQualityStreamGates(t *testing.T) {
 	if shouldHoldQualityStream(input, nil, route, audit.OperationCompaction, cfg) {
 		t.Fatal("compaction must not enter missing-thinking hold")
 	}
+	autoDisableOnly := QualityRetryRuntime{Enabled: true, AutoDisable: true, MaxAttempts: 2, MinOutputTokens: 32}
+	if shouldHoldQualityStream(input, nil, route, audit.OperationCompaction, autoDisableOnly) {
+		t.Fatal("/responses/compact must stay exempt with autoDisable on")
+	}
+	autoSummary := input
+	autoSummary.auditOperation = audit.OperationCompaction
+	if shouldHoldQualityStream(autoSummary, nil, route, audit.OperationResponses, autoDisableOnly) {
+		t.Fatal("audit-classified compaction (auto-compact summary) must stay exempt even without skipQualityHold")
+	}
 	classified := input
 	classified.skipQualityHold = true
 	if shouldHoldQualityStream(classified, nil, route, audit.OperationResponses, cfg) {
