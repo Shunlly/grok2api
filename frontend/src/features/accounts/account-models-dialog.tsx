@@ -1,3 +1,4 @@
+import { cn } from "@/shared/lib/cn";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { RefreshCw } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -5,7 +6,7 @@ import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, dialogMobileFullscreen } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getAccountModels, refreshAccountModels, type AccountModelItemDTO, type AccountModelsDTO } from "@/features/accounts/accounts-api";
@@ -71,7 +72,7 @@ export function AccountModelsDialog({ target, onClose }: { target: Target | null
 
   return (
     <Dialog open={target !== null} onOpenChange={(open) => { if (!open) onClose(); }}>
-      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-3xl">
+      <DialogContent className={cn("max-h-[90dvh] overflow-y-auto sm:max-w-3xl", dialogMobileFullscreen)}>
         <DialogHeader>
           <DialogTitle>{t("accountModels.title", { name: target?.name ?? "" })}</DialogTitle>
           <DialogDescription>{t("accountModels.description")}</DialogDescription>

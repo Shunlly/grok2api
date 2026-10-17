@@ -11,7 +11,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, dialogMobileFullscreen } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -564,7 +564,7 @@ function PolicyEditor({ open, onOpenChange, status }: { open: boolean; onOpenCha
   const resetDefaults = () => form.reset({ ...DEFAULT_POLICY, minHealthyNodes: Math.min(DEFAULT_POLICY.minHealthyNodes, nodeCount) });
 
   return <Dialog open={open} onOpenChange={onOpenChange}>
-    <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl">
+    <DialogContent className={cn("max-h-[90dvh] overflow-y-auto sm:max-w-2xl", dialogMobileFullscreen)}>
       <DialogHeader><DialogTitle>{t("qualityGuard.editPolicyTitle")}</DialogTitle><DialogDescription>{t("qualityGuard.editPolicyDescription")}</DialogDescription></DialogHeader>
       <form className="space-y-5" onSubmit={form.handleSubmit((value) => mutation.mutate(value))}>
         <div className="space-y-2">

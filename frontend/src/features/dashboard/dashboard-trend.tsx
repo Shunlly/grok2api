@@ -96,7 +96,7 @@ export function DashboardTrend({ dashboard, locale, loading }: DashboardTrendPro
                 tickLine={false}
                 axisLine={false}
                 tickMargin={8}
-                width={axisSides.tokens ? 48 : 0}
+                width={axisSides.tokens ? 56 : 0}
                 allowDecimals={false}
                 tickFormatter={(value) => formatCompactNumber(Number(value), locale)}
               />
