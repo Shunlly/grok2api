@@ -2,6 +2,18 @@
 
 Shunlly/grok2api fork of [chenyme/grok2api](https://github.com/chenyme/grok2api).
 
+## v3.5.6 — 2026-10-19
+
+### Changed
+- 默认 Grok Build 客户端版本 1.0.50 → 1.0.60（User-Agent `grok-shell/1.0.60 (linux; x86_64)`，同步上游 chenyme 4e220e81）。
+- 同步上游 4e220e81：换号重发同一轮时向 Build 上游带 `x-grok-transient-retry: N`（首次提交不带）。只有传输错误 / 5xx 计数，质量重试（缺 thinking、空流）、输出循环、空响应不计；Cloudflare 525/526 源站 TLS 错误不再换号重试。
+
+## v3.5.5 — 2026-10-17
+
+### Changed
+- 同步上游 dbd1a29f（voice-ws 区分取消与超时）、659ee8ca（autoDisable 运行时启用请求内检测；上下文压缩请求豁免账号质量惩罚）；autoDisable 默认关闭。
+- 模型页绑定账号支持「全选 / 清空」（按当前搜索结果），适配手机。
+
 ## v3.5.4 — 2026-10-17
 
 ### Changed（手机适配，桌面布局不变）
