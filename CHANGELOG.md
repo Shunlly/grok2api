@@ -2,6 +2,11 @@
 
 Shunlly/grok2api fork of [chenyme/grok2api](https://github.com/chenyme/grok2api).
 
+## v3.5.7 — 2026-10-20
+
+### Changed
+- 默认 Grok Build 客户端版本 1.0.60 → 1.0.62（User-Agent `grok-shell/1.0.62 (linux; x86_64)`，npm `@xai-official/grok` 当前 latest）。上线前已在生产通过设置热更新实测 grok-4.7 / grok-4.5 正常。
+
 ## v3.5.6 — 2026-10-19
 
 ### Changed
