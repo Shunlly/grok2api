@@ -1,4 +1,5 @@
-import { Activity, CircleDollarSign, Gauge, Info, UsersRound, WholeWord, type LucideIcon } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { Activity, Zap, CircleDollarSign, Gauge, Info, UsersRound, WholeWord, type LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Pie, PieChart } from "recharts";
@@ -6,6 +7,7 @@ import { Pie, PieChart } from "recharts";
 import { ChartContainer, type ChartConfig } from "@/components/ui/chart";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { getAccountConcurrency } from "@/features/accounts/accounts-api";
 import type { DashboardDTO } from "@/features/dashboard/dashboard-api";
 import { formatUSD, formatUSDValue } from "@/features/dashboard/dashboard-format";
 import { DashboardPanel } from "@/features/dashboard/dashboard-panel";
@@ -23,6 +25,7 @@ export function DashboardOverview({ dashboard, locale, loading }: DashboardDataP
   const { t } = useTranslation();
   const resources = dashboard?.resources;
   const usage = dashboard?.usage;
+  const concurrencyQuery = useQuery({ queryKey: ["accounts", "concurrency"], queryFn: getAccountConcurrency, refetchInterval: 5_000 });
   const cacheHitRate = (usage?.inputTokens ?? 0) > 0 ? (usage?.cachedInputTokens ?? 0) / (usage?.inputTokens ?? 1) * 100 : 0;
   const averageRequestCost = (usage?.requests ?? 0) > 0 ? usdTicksToValue(usage?.billedCostUsdTicks ?? 0) / (usage?.requests ?? 1) : 0;
   const hasFirstTokenSamples = (usage?.firstTokenSamples ?? 0) > 0;
@@ -33,7 +36,14 @@ export function DashboardOverview({ dashboard, locale, loading }: DashboardDataP
 
   return (
     <section aria-label={t("dashboard.usage")}>
-      <div className="grid grid-cols-2 gap-2 xl:grid-cols-5">
+      <div className="grid grid-cols-2 gap-2 xl:grid-cols-6">
+        <DashboardMetric
+          icon={Zap}
+          label={t("dashboard.currentConcurrency")}
+          value={formatNumber(concurrencyQuery.data?.total ?? 0, locale)}
+          detail={t("dashboard.currentConcurrencyDetail", { count: formatNumber(concurrencyQuery.data?.activeAccounts ?? 0, locale) })}
+          loading={concurrencyQuery.isPending}
+        />
         <DashboardMetric
           icon={UsersRound}
           label={t("dashboard.accountCount")}

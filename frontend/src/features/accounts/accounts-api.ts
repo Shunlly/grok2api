@@ -113,6 +113,7 @@ export type AccountDTO = {
   recoveryLastError?: string;
   enabledDoesNotClearCooldown?: boolean;
   lastUsedAt?: string;
+  currentConcurrency?: number;
   linkedAccountId?: string;
   linkedAccountName?: string;
   linkedProvider?: "grok_build" | "grok_web";
@@ -304,6 +305,16 @@ export function listAccounts(input: ListAccountsInput): Promise<PaginatedDTO<Acc
   }
   if (input.provider) query.set("provider", input.provider);
   return apiRequest(`/api/admin/v1/accounts?${query}`, {}, decodeAccountPage);
+}
+
+export type AccountConcurrencyDTO = { total: number; activeAccounts: number; accounts: Record<string, number> };
+
+const decodeAccountConcurrency = createObjectDecoder<AccountConcurrencyDTO>("account concurrency", {
+  total: isNumber, activeAccounts: isNumber, accounts: isRecordOf(isNumber),
+});
+
+export function getAccountConcurrency(): Promise<AccountConcurrencyDTO> {
+  return apiRequest("/api/admin/v1/accounts/concurrency", {}, decodeAccountConcurrency);
 }
 
 export function getAccountSummary(): Promise<AccountSummaryDTO> {

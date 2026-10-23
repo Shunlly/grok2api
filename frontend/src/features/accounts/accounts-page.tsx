@@ -36,7 +36,7 @@ import { formatCompactDateTime, formatDateTime, formatNumber } from "@/shared/li
 import { AccountAllowedModelsBadge, AccountAllowedModelsField } from "@/features/accounts/account-allowed-models";
 import { AccountModelsDialog } from "@/features/accounts/account-models-dialog";
 import { nextTableSort, type SortOrder, type TableSort } from "@/shared/lib/table-sort";
-import {
+import { getAccountConcurrency,
   acceptWebAccountTerms,
   cleanupAccounts,
   clearAccountCooldown,
@@ -277,6 +277,13 @@ export function AccountsPage() {
     refetchInterval: 60_000,
   });
   const qualityFlags = useMemo(() => new Map((qualityFlagsQuery.data?.flags ?? []).map((flag) => [flag.accountId, flag])), [qualityFlagsQuery.data]);
+
+  const concurrencyQuery = useQuery({
+    queryKey: ["accounts", "concurrency"],
+    queryFn: getAccountConcurrency,
+    refetchInterval: 5_000,
+  });
+  const currentConcurrency = (account: { id: string; currentConcurrency?: number }) => concurrencyQuery.data ? (concurrencyQuery.data.accounts[account.id] ?? 0) : (account.currentConcurrency ?? 0);
 
   const summaryQuery = useQuery({
     queryKey: ["accounts", "summary"],
@@ -1586,7 +1593,8 @@ export function AccountsPage() {
               <col style={{ width: "18%" }} />
               <col style={{ width: "7%" }} />
               <col style={{ width: "7%" }} />
-              <col style={{ width: provider === "grok_build" ? "27%" : "43%" }} />
+              <col style={{ width: "6%" }} />
+              <col style={{ width: provider === "grok_build" ? "21%" : "37%" }} />
               {provider === "grok_build" ? <col style={{ width: "16%" }} /> : null}
               <col style={{ width: "18%" }} />
               <col style={{ width: "4%" }} />
@@ -1597,6 +1605,7 @@ export function AccountsPage() {
                 <SortableTableHead field="name" sortBy={sort.field} sortOrder={sort.order} onSort={changeSort}>{t("accounts.account")}</SortableTableHead>
                 <SortableTableHead field="type" sortBy={sort.field} sortOrder={sort.order} align="center" onSort={changeSort} className="whitespace-nowrap">{t("accountType.label")}</SortableTableHead>
                 <SortableTableHead field="status" sortBy={sort.field} sortOrder={sort.order} align="center" onSort={changeSort} className="whitespace-nowrap">{t("accounts.status")}</SortableTableHead>
+                <TableHead className="whitespace-nowrap text-center">{t("accounts.currentConcurrency")}</TableHead>
                 <TableHead className={cn("whitespace-nowrap", provider !== "grok_build" && "px-6")}>{t("accounts.quota")}</TableHead>
                 {provider === "grok_build" ? <TableHead className="whitespace-nowrap pl-4">{t("accountCredential.label")}</TableHead> : null}
                 <SortableTableHead field="createdAt" sortBy={sort.field} sortOrder={sort.order} initialOrder="desc" onSort={changeSort} className="whitespace-nowrap">{t("accounts.createdAt")}</SortableTableHead>
@@ -1604,11 +1613,11 @@ export function AccountsPage() {
               </TableRow>
             </TableHeader>
             {accountsQuery.isPending ? (
-              <TableBody><TableLoadingRow colSpan={provider === "grok_build" ? 8 : 7} /></TableBody>
+              <TableBody><TableLoadingRow colSpan={provider === "grok_build" ? 9 : 8} /></TableBody>
             ) : (
               <VirtualTableBody
                 items={result?.items ?? []}
-                colSpan={provider === "grok_build" ? 8 : 7}
+                colSpan={provider === "grok_build" ? 9 : 8}
                 rowHeight={56}
                 renderRow={(account) => (
 	                  <TableRow className="group h-14 [&>td]:py-1.5" key={account.id} data-state={selected.has(account.id) ? "selected" : undefined}>
@@ -1616,6 +1625,7 @@ export function AccountsPage() {
 	                    <TableCell className="min-w-0"><AccountNameCell account={account} qualityFlag={qualityFlags.get(account.id)} /></TableCell>
                     <TableCell className="text-center whitespace-nowrap">{provider === "grok_web" ? <WebAccountType tier={account.webTier} /> : provider === "grok_console" ? <AccountTypeText label={t("accountType.console")} variant="free" /> : <AccountType quota={account.quota} planTier={account.planTier} planRaw={account.planRaw} />}</TableCell>
                     <TableCell className="text-center whitespace-nowrap"><AccountStatus account={account} /></TableCell>
+                    <TableCell className="text-center whitespace-nowrap"><ConcurrencyValue value={currentConcurrency(account)} /></TableCell>
                     <TableCell className={provider === "grok_build" ? undefined : "px-6"}>{renderAccountQuota(account)}</TableCell>
                     {provider === "grok_build" ? <TableCell className="whitespace-nowrap pl-4 text-xs">{renderAccountCredential(account)}</TableCell> : null}
                     <TableCell className="whitespace-nowrap text-xs text-muted-foreground">{formatDateTime(account.createdAt, i18n.language)}</TableCell>
@@ -1637,6 +1647,7 @@ export function AccountsPage() {
                 <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 pl-6 text-xs">
                   <span className="inline-flex items-center gap-1"><span className="text-muted-foreground">{t("accountType.label")}</span>{provider === "grok_web" ? <WebAccountType tier={account.webTier} /> : provider === "grok_console" ? <AccountTypeText label={t("accountType.console")} variant="free" /> : <AccountType quota={account.quota} planTier={account.planTier} planRaw={account.planRaw} />}</span>
                   <span className="inline-flex items-center gap-1"><span className="text-muted-foreground">{t("accounts.status")}</span><AccountStatus account={account} /></span>
+                  <span className="inline-flex items-center gap-1"><span className="text-muted-foreground">{t("accounts.currentConcurrency")}</span><ConcurrencyValue value={currentConcurrency(account)} /></span>
                   {provider === "grok_build" ? <span className="inline-flex items-center gap-1"><span className="text-muted-foreground">{t("accountCredential.label")}</span>{renderAccountCredential(account)}</span> : null}
                 </div>
                 <div className="mt-2 min-w-0 border-t pt-2 pl-6 text-xs">{renderAccountQuota(account)}</div>
@@ -2649,4 +2660,8 @@ function QuotaAutoSyncBadge() {
       {label}
     </span>
   );
+}
+
+function ConcurrencyValue({ value }: { value: number }) {
+  return <span className={cn("tabular-nums text-xs", value > 0 ? "font-semibold text-emerald-600 dark:text-emerald-400" : "text-muted-foreground")}>{value}</span>;
 }
