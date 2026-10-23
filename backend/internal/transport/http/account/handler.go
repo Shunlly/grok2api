@@ -214,6 +214,7 @@ func (p *accountSyncPipeline) reportProgress() {
 func (h *Handler) Register(router *gin.RouterGroup) {
 	router.GET("/accounts", h.list)
 	router.GET("/accounts/summary", h.summary)
+	router.GET("/accounts/concurrency", h.concurrency)
 	router.GET("/accounts/context-windows", h.contextWindows)
 	router.GET("/accounts/export", h.exportCredentials)
 	router.POST("/accounts/export", h.exportSelectedCredentials)
@@ -367,6 +368,7 @@ type accountImportResponse struct {
 }
 
 type accountResponse struct {
+	CurrentConcurrency       int        `json:"currentConcurrency"`
 	ID                       uint64     `json:"id,string"`
 	Provider                 string     `json:"provider"`
 	AuthType                 string     `json:"authType"`
@@ -600,6 +602,7 @@ func (h *Handler) list(c *gin.Context) {
 	h.applyLastUse(c.Request.Context(), items)
 	h.applyUsageStats(c.Request.Context(), items)
 	h.applyQuotaSyncHints(items)
+	h.applyConcurrency(c.Request.Context(), items)
 	response.Success(c, http.StatusOK, gin.H{"items": items, "page": page, "pageSize": pageSize, "total": total})
 }
 
@@ -1979,4 +1982,36 @@ func planTier(raw string) string {
 	default:
 		return "raw"
 	}
+}
+
+// applyConcurrency 附加账号当前推理并发；读取失败时保持为零。
+func (h *Handler) applyConcurrency(ctx context.Context, items []accountResponse) {
+	if len(items) == 0 {
+		return
+	}
+	ids := make([]uint64, 0, len(items))
+	for _, item := range items {
+		ids = append(ids, item.ID)
+	}
+	current, err := h.service.CurrentConcurrency(ctx, ids)
+	if err != nil {
+		return
+	}
+	for i := range items {
+		items[i].CurrentConcurrency = current[items[i].ID]
+	}
+}
+
+// concurrency 返回所有启用账号的实时并发快照，供前端轮询。
+func (h *Handler) concurrency(c *gin.Context) {
+	overview, err := h.service.ConcurrencyOverview(c.Request.Context())
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, "accountConcurrencyFailed", "读取账号并发失败")
+		return
+	}
+	accounts := make(map[string]int, len(overview.Accounts))
+	for id, value := range overview.Accounts {
+		accounts[strconv.FormatUint(id, 10)] = value
+	}
+	response.Success(c, http.StatusOK, gin.H{"total": overview.Total, "activeAccounts": overview.ActiveAccounts, "accounts": accounts})
 }

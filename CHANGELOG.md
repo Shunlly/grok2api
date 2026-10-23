@@ -2,6 +2,13 @@
 
 Shunlly/grok2api fork of [chenyme/grok2api](https://github.com/chenyme/grok2api).
 
+## v3.5.9 — 2026-10-23
+
+### Added
+- 账号列表新增「当前并发」列（手机卡片同步显示），展示每个账号正在处理的请求数，每 5 秒刷新。
+- 仪表盘新增「当前并发」卡片：所有启用账号的在途请求总数及正在处理请求的账号数。
+- 新接口 `GET /api/admin/v1/accounts/concurrency`；账号列表接口返回 `currentConcurrency` 字段。
+
 ## v3.5.8 — 2026-10-22
 
 ### Changed
