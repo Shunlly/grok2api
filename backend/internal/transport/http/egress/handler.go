@@ -59,6 +59,7 @@ func (h *Handler) Register(router *gin.RouterGroup) {
 	router.PUT("/egress-proxy-profiles/:id", h.updateProxyProfile)
 	router.DELETE("/egress-proxy-profiles/:id", h.deleteProxyProfile)
 	router.POST("/egress-proxy-profiles/:id/proxy-url/reveal", h.proxyProfileURL)
+	router.POST("/egress-proxy-profiles/:id/test", h.testProxyProfile)
 	router.GET("/egress-nodes", h.list)
 	router.POST("/egress-nodes", h.create)
 	router.PATCH("/egress-nodes/batch", h.updateMany)
@@ -1446,6 +1447,23 @@ func (h *Handler) testNode(c *gin.Context) {
 		return
 	}
 	value, err := h.service.TestNode(c.Request.Context(), id)
+	if err != nil {
+		h.writeError(c, err)
+		return
+	}
+	response.Success(c, http.StatusOK, gin.H{
+		"status": value.Status, "testedAt": value.TestedAt, "latencyMs": value.LatencyMS, "exitIp": value.ExitIP, "error": value.Error,
+		"probeProvider": value.Provider,
+		"ipv4":          newProbeFamilyResponse(value.IPv4), "ipv6": newProbeFamilyResponse(value.IPv6),
+	})
+}
+
+func (h *Handler) testProxyProfile(c *gin.Context) {
+	id, ok := pathID(c)
+	if !ok {
+		return
+	}
+	value, err := h.service.TestProxyProfile(c.Request.Context(), id)
 	if err != nil {
 		h.writeError(c, err)
 		return

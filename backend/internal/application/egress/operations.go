@@ -322,6 +322,42 @@ func (s *Service) TestNode(ctx context.Context, id uint64) (domain.ProbeResult, 
 	return result, nil
 }
 
+// TestProxyProfile probes a shared proxy address directly without touching
+// the health state of any node bound to it. The probe uses a transient node
+// snapshot so the library can be checked before or after binding nodes.
+func (s *Service) TestProxyProfile(ctx context.Context, id uint64) (domain.ProbeResult, error) {
+	if s.proxyProfiles == nil {
+		return domain.ProbeResult{}, ErrProxyProfileUnavailable
+	}
+	profile, err := s.proxyProfiles.GetEgressProxyProfile(ctx, id)
+	if errors.Is(err, repository.ErrNotFound) {
+		return domain.ProbeResult{}, ErrProxyProfileNotFound
+	} else if err != nil {
+		return domain.ProbeResult{}, err
+	}
+	prober := s.nodeProber()
+	if prober == nil {
+		return domain.ProbeResult{}, ErrOperationsUnavailable
+	}
+	result, probeErr := prober.ProbeEgressNode(ctx, domain.Node{
+		Name: profile.Name, Scope: domain.ScopeBuild, Enabled: true,
+		ProxyProfileID: profile.ID, ProxyProfileName: profile.Name, EncryptedProxyURL: profile.EncryptedProxyURL,
+	})
+	if result.TestedAt.IsZero() {
+		result.TestedAt = time.Now().UTC()
+	}
+	if !result.Status.IsValid() {
+		result.Status = domain.ProbeStatusUnhealthy
+	}
+	if probeErr != nil {
+		result.Status = domain.ProbeStatusUnhealthy
+		if strings.TrimSpace(result.Error) == "" {
+			result.Error = "代理探测失败"
+		}
+	}
+	return result, nil
+}
+
 func (s *Service) TestNodes(ctx context.Context, ids []uint64) (ProbeBatchResult, error) {
 	if len(ids) == 0 {
 		nodes, err := s.repository.ListEgressNodes(ctx, "", repository.SortQuery{})

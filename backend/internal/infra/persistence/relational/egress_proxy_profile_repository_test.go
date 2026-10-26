@@ -260,3 +260,60 @@ func TestStandaloneProxyProfileMigrationProcessesMultipleBatches(t *testing.T) {
 		t.Fatalf("unbound=%d total=%d profiles=%d err=%v", unbound, total, len(profiles), err)
 	}
 }
+
+type capturingEgressProbeStub struct {
+	seen   *egress.Node
+	result egress.ProbeResult
+}
+
+func (stub capturingEgressProbeStub) ProbeEgressNode(_ context.Context, node egress.Node) (egress.ProbeResult, error) {
+	*stub.seen = node
+	return stub.result, nil
+}
+
+func TestProxyProfileTestProbesAddressWithoutTouchingBoundNodes(t *testing.T) {
+	ctx := context.Background()
+	database, err := OpenSQLite(ctx, filepath.Join(t.TempDir(), "proxy-profile-test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if err := database.InitializeSchema(ctx); err != nil {
+		t.Fatal(err)
+	}
+	cipher, err := security.NewCipher("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
+	if err != nil {
+		t.Fatal(err)
+	}
+	repository := NewEgressRepository(database)
+	service := egressapp.NewService(repository, cipher, "browser-agent")
+	proxyURL := "socks5h://user:secret@proxy.example:1080"
+	profile, err := service.CreateProxyProfile(ctx, egressapp.ProxyProfileInput{Name: "Tokyo", ProxyURL: &proxyURL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	profileID := profile.ID
+	node, err := service.Create(ctx, egressapp.Input{Name: "build", Scope: egress.ScopeBuild, Enabled: true, ProxyProfileID: &profileID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var seen egress.Node
+	service.SetNodeProber(capturingEgressProbeStub{seen: &seen, result: egress.ProbeResult{
+		Status: egress.ProbeStatusHealthy, ExitIP: "203.0.113.9", LatencyMS: 42,
+	}})
+	result, err := service.TestProxyProfile(ctx, profileID)
+	if err != nil || result.Status != egress.ProbeStatusHealthy || result.ExitIP != "203.0.113.9" || result.TestedAt.IsZero() {
+		t.Fatalf("test profile = %#v, %v", result, err)
+	}
+	actual, err := cipher.Decrypt(seen.EncryptedProxyURL)
+	if err != nil || actual != proxyURL || seen.ID != 0 {
+		t.Fatalf("probe snapshot = %#v (%q, %v)", seen, actual, err)
+	}
+	stored, err := repository.GetEgressNode(ctx, node.ID)
+	if err != nil || stored.ProbeStatus != egress.ProbeStatusUnknown || stored.ExitIP != "" {
+		t.Fatalf("bound node changed by profile test: %#v, %v", stored, err)
+	}
+	if _, err := service.TestProxyProfile(ctx, profileID+100); !errors.Is(err, egressapp.ErrProxyProfileNotFound) {
+		t.Fatalf("missing profile error = %v", err)
+	}
+}

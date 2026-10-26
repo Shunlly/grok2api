@@ -420,6 +420,10 @@ export function getEgressProxyProfileURL(id: string): Promise<{ proxyURL: string
   return apiRequest(`/api/admin/v1/egress-proxy-profiles/${id}/proxy-url/reveal`, { method: "POST" }, createObjectDecoder<{ proxyURL: string }>("egress proxy profile URL", { proxyURL: isString }));
 }
 
+export function testEgressProxyProfile(id: string): Promise<EgressProbeResultDTO> {
+  return apiRequest(`/api/admin/v1/egress-proxy-profiles/${id}/test`, { method: "POST" }, decodeEgressProbeResult);
+}
+
 export function deleteEgressNode(id: string): Promise<{ deleted: boolean }> {
   return apiRequest(`/api/admin/v1/egress-nodes/${id}`, { method: "DELETE" }, decodeBooleanResult<{ deleted: boolean }>("deleted"));
 }

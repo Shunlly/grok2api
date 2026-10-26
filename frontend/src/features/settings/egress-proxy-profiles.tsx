@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Eye, EyeOff, MoreHorizontal, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { ArrowLeft, Eye, EyeOff, MoreHorizontal, Pencil, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -12,7 +12,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 import { Table, TableActionCell, TableActionHead, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { createEgressProxyProfile, deleteEgressProxyProfile, getEgressProxyProfileURL, listEgressProxyProfiles, updateEgressProxyProfile, type EgressProxyProfileDTO } from "@/features/settings/settings-api";
+import { createEgressProxyProfile, deleteEgressProxyProfile, getEgressProxyProfileURL, listEgressProxyProfiles, testEgressProxyProfile, updateEgressProxyProfile, type EgressProxyProfileDTO } from "@/features/settings/settings-api";
+import { showProbeToast } from "@/features/settings/egress-probe-toast";
 import { ErrorState, TableLoadingRow } from "@/shared/components/data-state";
 import { Pagination } from "@/shared/components/pagination";
 import { useDebouncedValue } from "@/shared/hooks/use-debounced-value";
@@ -53,6 +54,11 @@ export function EgressProxyProfiles({ open, onOpenChange, startCreating = false,
       toast.success(t("egressProxyProfiles.saved"));
       if (created) onCreated?.(profile);
     },
+    onError: (error) => toast.error(error instanceof Error ? error.message : t("settings.egress.operationFailed")),
+  });
+  const testProfile = useMutation({
+    mutationFn: testEgressProxyProfile,
+    onSuccess: (result) => showProbeToast(result, t),
     onError: (error) => toast.error(error instanceof Error ? error.message : t("settings.egress.operationFailed")),
   });
   const reveal = useMutation({
@@ -128,7 +134,7 @@ export function EgressProxyProfiles({ open, onOpenChange, startCreating = false,
                     <TableCell><span className="block truncate text-xs font-medium" title={profile.name}>{profile.name}</span></TableCell>
                     <TableCell><div className="min-w-0" title={`${profile.proxyDisplay || ""} · ${profile.proxyFingerprint || ""}`}><p className="truncate text-xs font-medium">{profile.proxyDisplay}</p>{profile.proxyFingerprint ? <p className="font-mono text-[10px] text-muted-foreground">#{profile.proxyFingerprint}</p> : null}</div></TableCell>
                     <TableCell className="text-center text-xs tabular-nums">{profile.boundNodeCount}</TableCell>
-                    <TableActionCell><DropdownMenu><DropdownMenuTrigger asChild><Button type="button" variant="ghost" size="icon" className="size-8" aria-label={t("common.actions")}><MoreHorizontal /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onClick={() => openEdit(profile)}><Pencil />{t("common.edit")}</DropdownMenuItem><DropdownMenuSeparator /><DropdownMenuItem className="text-destructive focus:text-destructive" disabled={profile.boundNodeCount > 0} onClick={() => setDeleting(profile)}><Trash2 />{profile.boundNodeCount > 0 ? t("egressProxyProfiles.deleteBlocked", { count: profile.boundNodeCount }) : t("common.delete")}</DropdownMenuItem></DropdownMenuContent></DropdownMenu></TableActionCell>
+                    <TableActionCell><DropdownMenu><DropdownMenuTrigger asChild><Button type="button" variant="ghost" size="icon" className="size-8" aria-label={t("common.actions")}><MoreHorizontal /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onClick={() => openEdit(profile)}><Pencil />{t("common.edit")}</DropdownMenuItem><DropdownMenuItem disabled={testProfile.isPending} onSelect={() => testProfile.mutate(profile.id)}><RefreshCw />{t("egressProxyProfiles.test")}</DropdownMenuItem><DropdownMenuSeparator /><DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => setDeleting(profile)}><Trash2 />{t("common.delete")}{profile.boundNodeCount > 0 ? <span className="ml-auto pl-3 text-[10px] text-muted-foreground">{t("egressProxyProfiles.deleteBlocked", { count: profile.boundNodeCount })}</span> : null}</DropdownMenuItem></DropdownMenuContent></DropdownMenu></TableActionCell>
                   </TableRow>)}</TableBody> : null}
                 </Table> : null}
               </div>
@@ -147,7 +153,7 @@ export function EgressProxyProfiles({ open, onOpenChange, startCreating = false,
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={Boolean(deleting)} onOpenChange={(next) => { if (!next) setDeleting(undefined); }}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>{t("egressProxyProfiles.deleteTitle")}</AlertDialogTitle><AlertDialogDescription>{t("egressProxyProfiles.deleteDescription", { name: deleting?.name })}</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel disabled={remove.isPending}>{t("common.cancel")}</AlertDialogCancel><AlertDialogAction className="bg-destructive text-white hover:bg-destructive/90" disabled={remove.isPending} onClick={(event) => { event.preventDefault(); if (deleting) remove.mutate(deleting.id); }}>{remove.isPending ? <Spinner /> : null}{t("common.delete")}</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
+      <AlertDialog open={Boolean(deleting)} onOpenChange={(next) => { if (!next) setDeleting(undefined); }}><AlertDialogContent>{deleting && deleting.boundNodeCount > 0 ? <><AlertDialogHeader><AlertDialogTitle>{t("egressProxyProfiles.deleteBlockedTitle")}</AlertDialogTitle><AlertDialogDescription>{t("egressProxyProfiles.deleteBlockedDescription", { name: deleting.name, count: deleting.boundNodeCount })}</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>{t("common.close")}</AlertDialogCancel></AlertDialogFooter></> : <><AlertDialogHeader><AlertDialogTitle>{t("egressProxyProfiles.deleteTitle")}</AlertDialogTitle><AlertDialogDescription>{t("egressProxyProfiles.deleteDescription", { name: deleting?.name })}</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel disabled={remove.isPending}>{t("common.cancel")}</AlertDialogCancel><AlertDialogAction className="bg-destructive text-white hover:bg-destructive/90" disabled={remove.isPending} onClick={(event) => { event.preventDefault(); if (deleting) remove.mutate(deleting.id); }}>{remove.isPending ? <Spinner /> : null}{t("common.delete")}</AlertDialogAction></AlertDialogFooter></>}</AlertDialogContent></AlertDialog>
     </>
   );
 }
