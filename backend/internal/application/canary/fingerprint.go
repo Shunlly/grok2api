@@ -125,6 +125,8 @@ func (s *Service) loadAnalyzer() (Analyzer, error) {
 // RunFingerprint is the fingerprint scheduler loop (only when enabled).
 func (s *Service) RunFingerprint(ctx context.Context) error {
 	if !s.fpCfg.Enabled {
+		// Stay parked so the background supervisor does not treat this as a crash.
+		<-ctx.Done()
 		return nil
 	}
 	s.setFingerprintNext(time.Now().Add(s.fpCfg.InitialDelay))
@@ -340,6 +342,7 @@ func (s *Service) probeFingerprint(ctx context.Context, analyzer Analyzer, value
 			outs[i], errs[i] = s.prober.ProbeAccountCanary(probeCtx, gatewayapp.CanaryProbeInput{
 				ClientKeyID: s.clientKeyID, AccountID: value.AccountID, Model: value.Model, Prompt: prompt,
 				ReasoningEffort: s.fpCfg.ReasoningEffort, MaxOutputTokens: s.fpCfg.MaxOutputTokens, IdleTimeout: s.cfg.IdleTimeout,
+				MaxVisibleChars: fingerprintMaxVisibleChars,
 			})
 		}(i, challenge.Prompt)
 	}
@@ -407,7 +410,16 @@ func (s *Service) probeFingerprint(ctx context.Context, analyzer Analyzer, value
 	canary.JudgeFingerprint(value, analyzer.ModelFamily(value.Model), canary.FingerprintPolicy{
 		MinConfidence: s.fpCfg.MinConfidence, FamilyTolerant: s.fpCfg.FamilyTolerant, SuspectAfter: s.fpCfg.SuspectAfter,
 	})
+	// The detector only calibrates a probability when every challenge is
+	// accepted; a ranking alone is not evidence either way.
+	if analysis.Probability == nil && value.Status != canary.StatusError {
+		value.Status, value.Verdict = canary.StatusSkipped, canary.VerdictInsufficient
+		value.Reasons = fmt.Sprintf("仅 %d/%d 组有效，未达评分条件（排名第一：%s）", value.ValidOutputs, len(challenges), value.TopModel)
+	}
 }
+
+// fingerprintMaxVisibleChars caps each answer; 300 numbers need about 1.5KB.
+const fingerprintMaxVisibleChars = 8 << 10
 
 func round4(v float64) float64 { return float64(int64(v*10000+0.5)) / 10000 }
 
