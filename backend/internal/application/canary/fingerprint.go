@@ -268,13 +268,17 @@ func (s *Service) runFingerprintLocked(ctx context.Context, roundID, trigger str
 			})
 		}
 	}
+	// Accounts run in parallel; each account sees one stream at a time.
 	var wg sync.WaitGroup
-	for index := range results {
+	per := len(s.fpCfg.Models)
+	for start := 0; start < len(results); start += per {
 		wg.Add(1)
-		go func(value *canary.FingerprintResult) {
+		go func(group []canary.FingerprintResult) {
 			defer wg.Done()
-			s.probeFingerprint(ctx, analyzer, value)
-		}(&results[index])
+			for index := range group {
+				s.probeFingerprint(ctx, analyzer, &group[index])
+			}
+		}(results[start:min(start+per, len(results))])
 	}
 	wg.Wait()
 
@@ -332,21 +336,22 @@ func (s *Service) probeFingerprint(ctx context.Context, analyzer Analyzer, value
 	}
 	outs := make([]gatewayapp.CanaryProbeOutput, len(challenges))
 	errs := make([]error, len(challenges))
-	var wg sync.WaitGroup
+	// Sequential on purpose: three concurrent streams on one account stalled
+	// upstream (idle timeouts) in production. Each failed challenge gets one retry.
 	for i, challenge := range challenges {
-		wg.Add(1)
-		go func(i int, prompt string) {
-			defer wg.Done()
+		for attempt := 0; attempt < 2 && ctx.Err() == nil; attempt++ {
 			probeCtx, cancel := context.WithTimeout(ctx, s.cfg.ProbeTimeout)
-			defer cancel()
 			outs[i], errs[i] = s.prober.ProbeAccountCanary(probeCtx, gatewayapp.CanaryProbeInput{
-				ClientKeyID: s.clientKeyID, AccountID: value.AccountID, Model: value.Model, Prompt: prompt,
+				ClientKeyID: s.clientKeyID, AccountID: value.AccountID, Model: value.Model, Prompt: challenge.Prompt,
 				ReasoningEffort: s.fpCfg.ReasoningEffort, MaxOutputTokens: s.fpCfg.MaxOutputTokens, IdleTimeout: s.cfg.IdleTimeout,
 				MaxVisibleChars: fingerprintMaxVisibleChars,
 			})
-		}(i, challenge.Prompt)
+			cancel()
+			if errs[i] == nil {
+				break
+			}
+		}
 	}
-	wg.Wait()
 	inputs := make([]lmfpd.Output, len(challenges))
 	requestIDs := make([]string, 0, len(challenges))
 	failures := []string{}
@@ -355,7 +360,7 @@ func (s *Service) probeFingerprint(ctx context.Context, analyzer Analyzer, value
 		raw, _ := canary.TruncateBytes(outs[i].Text, 16<<10)
 		value.RawOutputs = append(value.RawOutputs, raw)
 		value.OutputTokens += outs[i].OutputTokens
-		value.DurationMS = max(value.DurationMS, outs[i].DurationMS)
+		value.DurationMS += outs[i].DurationMS
 		if outs[i].RequestID != "" {
 			requestIDs = append(requestIDs, outs[i].RequestID)
 		}
