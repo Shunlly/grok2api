@@ -22,6 +22,11 @@ COPY frontend/src ./src
 RUN --mount=type=cache,id=grok2api-tsc,target=/src/frontend/.cache,sharing=locked \
     pnpm build
 
+# 预压缩静态资源（gzip + brotli），后端按 Accept-Encoding 直接返回 .br/.gz。
+RUN apk add --no-cache brotli gzip && \
+    find dist -type f \( -name '*.js' -o -name '*.mjs' -o -name '*.css' -o -name '*.html' -o -name '*.svg' -o -name '*.json' -o -name '*.txt' \) -size +1k \
+      -exec gzip -9 -k -n {} \; -exec brotli -q 11 -k {} \;
+
 
 FROM --platform=$BUILDPLATFORM golang:${GO_VERSION}-alpine AS backend-builder
 
