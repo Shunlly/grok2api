@@ -2,6 +2,14 @@
 
 Shunlly/grok2api fork of [chenyme/grok2api](https://github.com/chenyme/grok2api).
 
+## v3.5.12 — 2026-10-26
+
+### Fixed
+- 代理地址库：已绑定节点的地址「删除」不再是灰色不可点，点击后弹窗说明被哪些节点占用、需先删除或改绑节点；未绑定的地址照常确认删除。
+- 代理地址库新增「测试代理」：直接用该地址做 IPv4/IPv6 探测（`POST /api/admin/v1/egress-proxy-profiles/:id/test`），不改动已绑定节点的健康状态。
+- 出口代理节点「删除」改为先弹确认框（显示将解绑的账号数），不再点一下就直接删除。
+- 「测试代理」结果提示更清楚：IPv4 通、IPv6 不通时显示为可用（警告）并给出出口 IP，不再只弹「代理连接失败」。
+
 ## v3.5.11 — 2026-10-26
 
 ### Changed

@@ -20,6 +20,7 @@ import { Table, TableActionCell, TableActionHead, TableBody, TableCell, TableHea
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { EgressAutomation, EgressSources } from "@/features/settings/egress-operations";
+import { showProbeToast } from "@/features/settings/egress-probe-toast";
 import { EgressProxyProfiles } from "@/features/settings/egress-proxy-profiles";
 import { cleanupUnhealthyEgressNodes, createEgressNode, deleteEgressNode, deleteEgressNodes, getEgressNodeProxyURL, getEgressProxyProfile, importEgressText, listEgressProxyProfiles, listEgressNodes, previewUnhealthyEgressNodes, refreshEgressClearance, testEgressNode, updateEgressNode, updateEgressNodesEnabled, type ClearanceMode, type EgressIPProbeDTO, type EgressNodeDTO, type EgressNodeInput, type EgressScope } from "@/features/settings/settings-api";
 import { ErrorState, TableLoadingRow } from "@/shared/components/data-state";
@@ -55,6 +56,7 @@ export function EgressNodes({ title, clearanceMode }: { title: string; clearance
   const [assignmentFilter, setAssignmentFilter] = useState("");
   const [selected, setSelected] = useState<Map<string, EgressNodeDTO>>(() => new Map());
   const [batchDeleteOpen, setBatchDeleteOpen] = useState(false);
+  const [deletingNode, setDeletingNode] = useState<EgressNodeDTO | undefined>();
   const [cleanupOpen, setCleanupOpen] = useState(false);
   const [profileLibraryOpen, setProfileLibraryOpen] = useState(false);
   const [profileLibraryCreate, setProfileLibraryCreate] = useState(false);
@@ -110,6 +112,7 @@ export function EgressNodes({ title, clearanceMode }: { title: string; clearance
       });
       void queryClient.invalidateQueries({ queryKey: ["egress-nodes"] });
       void queryClient.invalidateQueries({ queryKey: ["egress-proxy-profiles"] });
+      setDeletingNode(undefined);
       toast.success(t("settings.egress.deleted"));
     },
     onError: (error) => showError(error, t("settings.egress.operationFailed")),
@@ -159,10 +162,7 @@ export function EgressNodes({ title, clearanceMode }: { title: string; clearance
   });
   const testNode = useMutation({
     mutationFn: testEgressNode,
-    onSuccess: (result) => {
-      if (result.status === "healthy") toast.success(t("settings.egress.testedOne"));
-      else toast.error(result.error || t("settings.egress.operationFailed"));
-    },
+    onSuccess: (result) => showProbeToast(result, t),
     onError: (error) => showError(error, t("settings.egress.operationFailed")),
     onSettled: () => { void queryClient.invalidateQueries({ queryKey: ["egress-nodes"] }); },
   });
@@ -334,7 +334,7 @@ export function EgressNodes({ title, clearanceMode }: { title: string; clearance
                       <DropdownMenuSeparator />
                       {clearanceMode !== "manual" && !node.accountBoundProxy && (node.scope === "grok_web" || node.scope === "grok_web_asset" || node.scope === "grok_console") ? <DropdownMenuItem disabled={refreshClearance.isPending} onClick={() => refreshClearance.mutate(node.id)}><RefreshCw />{t("settings.egress.refreshClearance")}</DropdownMenuItem> : null}
                       <DropdownMenuItem disabled={testNode.isPending || !node.proxyConfigured} onClick={() => testNode.mutate(node.id)}><RefreshCw />{t("settings.egress.test")}</DropdownMenuItem>
-                      <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => remove.mutate(node.id)}><Trash2 />{t("common.delete")}</DropdownMenuItem>
+                      <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => setDeletingNode(node)}><Trash2 />{t("common.delete")}</DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </TableActionCell>
@@ -346,6 +346,16 @@ export function EgressNodes({ title, clearanceMode }: { title: string; clearance
       </section>
 
       <EgressAutomation scopeLabel={scopeLabel} />
+
+      <AlertDialog open={deletingNode !== undefined} onOpenChange={(open) => { if (!open && !remove.isPending) setDeletingNode(undefined); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("settings.egress.deleteNodeTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>{t("settings.egress.deleteNodeDescription", { name: deletingNode?.name ?? "", count: deletingNode?.assignedAccountCount ?? 0 })}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter><AlertDialogCancel disabled={remove.isPending}>{t("common.cancel")}</AlertDialogCancel><AlertDialogAction className="bg-destructive text-white hover:bg-destructive/90" disabled={remove.isPending} onClick={(event) => { event.preventDefault(); if (deletingNode) remove.mutate(deletingNode.id); }}>{remove.isPending ? <Spinner /> : null}{t("common.delete")}</AlertDialogAction></AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={batchDeleteOpen} onOpenChange={setBatchDeleteOpen}>
         <AlertDialogContent>
@@ -694,3 +704,4 @@ function Field({ label, controlId, description, help, children }: { label: strin
 function showError(error: unknown, fallback: string) {
   toast.error(error instanceof Error ? error.message : fallback);
 }
+
