@@ -168,3 +168,9 @@ body {
 :focus-visible {
   outline-color: var(--ring);
 }
+
+/* A closing Radix menu keeps its positioning wrapper mounted for the exit
+   animation; let clicks fall through to the row beneath it. */
+[data-radix-popper-content-wrapper]:has(> [role="menu"][data-state="closed"]) {
+  pointer-events: none;
+}

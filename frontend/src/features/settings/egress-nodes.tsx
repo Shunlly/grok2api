@@ -337,7 +337,7 @@ export function EgressNodes({ title, clearanceMode }: { title: string; clearance
                 <TableActionCell>
                   <DropdownMenu modal={false}>
                     <DropdownMenuTrigger asChild><Button type="button" variant="ghost" size="icon" className="size-8" aria-label={t("common.actions")}><MoreHorizontal /></Button></DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
+                    <DropdownMenuContent align="end" onCloseAutoFocus={(event) => event.preventDefault()}>
                       <DropdownMenuItem onSelect={() => openEdit(node)}><Pencil />{t("common.edit")}</DropdownMenuItem>
                       <DropdownMenuSeparator />
                       {clearanceMode !== "manual" && !node.accountBoundProxy && (node.scope === "grok_web" || node.scope === "grok_web_asset" || node.scope === "grok_console") ? <DropdownMenuItem disabled={refreshClearance.isPending} onClick={() => refreshClearance.mutate(node.id)}><RefreshCw />{t("settings.egress.refreshClearance")}</DropdownMenuItem> : null}
