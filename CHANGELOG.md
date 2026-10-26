@@ -2,6 +2,11 @@
 
 Shunlly/grok2api fork of [chenyme/grok2api](https://github.com/chenyme/grok2api).
 
+## v3.5.18 — 2026-10-26
+
+### Fixed
+- 模型指纹：同一账号同时开 3～6 个流时上游会中途停顿，触发空闲超时。现在每个账号的请求依次发送（不同账号仍并行），失败的一组重试 1 次；耗时改为累计值。
+
 ## v3.5.17 — 2026-10-26
 
 ### Fixed

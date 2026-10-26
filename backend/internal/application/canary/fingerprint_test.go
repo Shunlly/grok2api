@@ -148,7 +148,7 @@ func TestFingerprintRoundJudgesAndFlags(t *testing.T) {
 					t.Fatalf("round %d substituted %#v", round, r)
 				}
 			}
-			if len(r.RawOutputs) != 3 || r.DurationMS != 1002 {
+			if len(r.RawOutputs) != 3 || r.DurationMS != 3003 {
 				t.Fatalf("raw/latency %#v", r)
 			}
 		}
