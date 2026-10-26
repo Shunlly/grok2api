@@ -2,6 +2,11 @@
 
 Shunlly/grok2api fork of [chenyme/grok2api](https://github.com/chenyme/grok2api).
 
+## v3.5.13 — 2026-10-26
+
+### Fixed
+- 代理地址库「测试代理」在 v3.5.12 中返回「代理节点 ID 无效」：探测器现在接受来自地址库的临时快照（无节点 ID、带地址 ID），其余无 ID 的探测仍会被拒绝。
+
 ## v3.5.12 — 2026-10-26
 
 ### Fixed

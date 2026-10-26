@@ -2986,3 +2986,31 @@ func TestAccountIsolationHotUpdateEvictsOldPools(t *testing.T) {
 		t.Fatal("disabling isolation did not restore the shared pool")
 	}
 }
+
+func TestProbeEgressNodeAcceptsProxyProfileSnapshot(t *testing.T) {
+	cipher, err := security.NewCipher("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
+	if err != nil {
+		t.Fatal(err)
+	}
+	encryptedProxy, err := cipher.Encrypt("http://proxy.example:8080")
+	if err != nil {
+		t.Fatal(err)
+	}
+	config := domain.DefaultOperationsConfig()
+	config.ProbeProvider = domain.ProbeProviderCloudflare
+	repository := fallbackEgressRepository{config: config}
+	manager := NewManager(repository, cipher)
+	manager.newBuildClient = func(string, time.Duration) (requestClient, error) {
+		return &scriptedRequestClient{do: func(_ int, request *http.Request) (*http.Response, error) {
+			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader("ip=198.51.100.12\n"))}, nil
+		}}, nil
+	}
+	snapshot := domain.Node{Name: "library", Scope: domain.ScopeBuild, Enabled: true, ProxyProfileID: 7, EncryptedProxyURL: encryptedProxy}
+	result, err := manager.ProbeEgressNode(context.Background(), snapshot)
+	if err != nil || result.IPv4.Status != domain.ProbeStatusHealthy {
+		t.Fatalf("profile snapshot probe = %#v, %v", result, err)
+	}
+	if _, err := manager.ProbeEgressNode(context.Background(), domain.Node{Scope: domain.ScopeBuild, EncryptedProxyURL: encryptedProxy}); err == nil {
+		t.Fatal("snapshot without node or profile ID must be rejected")
+	}
+}

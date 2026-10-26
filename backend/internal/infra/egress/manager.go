@@ -565,7 +565,9 @@ func (m *Manager) ProbeEgressNode(ctx context.Context, node domain.Node) (domain
 
 func (m *Manager) prepareEgressProbe(node domain.Node) (preparedEgressProbe, string, string, error) {
 	target := preparedEgressProbe{nodeID: node.ID, nodeName: node.Name, nodeScope: node.Scope}
-	if node.ID == 0 {
+	// A transient snapshot from the proxy address library has no node ID but
+	// carries its profile ID; only that case may probe without a node.
+	if node.ID == 0 && node.ProxyProfileID == 0 {
 		message := "代理节点 ID 无效"
 		return target, "validate_node", message, errors.New(message)
 	}
