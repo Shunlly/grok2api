@@ -2,6 +2,11 @@
 
 Shunlly/grok2api fork of [chenyme/grok2api](https://github.com/chenyme/grok2api).
 
+## v3.5.15 — 2026-10-26
+
+### Fixed
+- 下拉菜单关闭动画期间（约 150ms），淡出中的菜单仍盖在下面几行的「⋯」上，会吞掉点击。关闭中的菜单及其定位容器改为不接收点击；行菜单关闭时不再把焦点抢回原按钮，避免刚打开的下一个菜单被立刻关掉。
+
 ## v3.5.14 — 2026-10-26
 
 ### Fixed
