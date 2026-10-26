@@ -29,6 +29,9 @@ func registerFrontend(router *gin.Engine, staticPath string) {
 			} else {
 				c.Header("Cache-Control", "no-cache")
 			}
+			if serveCompressedFrontendFile(c.Writer, c.Request, filepath.Join(root, filePath)) {
+				return
+			}
 			c.Request.URL.Path = "/" + filepath.ToSlash(filePath)
 			files.ServeHTTP(c.Writer, c.Request)
 			return
@@ -38,6 +41,9 @@ func registerFrontend(router *gin.Engine, staticPath string) {
 			return
 		}
 		c.Header("Cache-Control", "no-cache")
+		if serveCompressedFrontendFile(c.Writer, c.Request, indexPath) {
+			return
+		}
 		http.ServeFile(c.Writer, c.Request, indexPath)
 	})
 }

@@ -2,6 +2,11 @@
 
 Shunlly/grok2api fork of [chenyme/grok2api](https://github.com/chenyme/grok2api).
 
+## v3.5.11 — 2026-10-26
+
+### Changed
+- 管理后台静态资源压缩：Docker 构建时预生成 `.gz`/`.br`，后端按 `Accept-Encoding` 优先返回 brotli/gzip（带 `Vary: Accept-Encoding` 与正确 `Content-Type`）；无预压缩文件时对 html/js/css/json/svg 即时 gzip 并缓存。缓存头不变，`/v1`、`/api` 等接口及流式响应不压缩。首屏 JS/CSS 体积约 920KB → ~200KB。
+
 ## v3.5.10 — 2026-10-24
 
 ### Changed
