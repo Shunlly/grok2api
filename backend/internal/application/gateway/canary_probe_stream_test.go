@@ -80,3 +80,16 @@ func TestCanaryStreamCompletes(t *testing.T) {
 		t.Fatalf("out=%#v err=%v", out, err)
 	}
 }
+
+func TestCanaryStreamVisibleCap(t *testing.T) {
+	chunk := "data: {\"id\":\"r1\",\"choices\":[{\"delta\":{\"content\":\"1 2 3 4 5 \"}}]}\n\n"
+	body := &errAfterReader{r: strings.NewReader(strings.Repeat(chunk, 50))}
+	usage := Usage{}
+	id := ""
+	watchdog := newCanaryWatchdog(time.Minute, func() {})
+	defer watchdog.stop()
+	out, err := readCanaryStreamLimited(context.Background(), body, time.Now(), watchdog, &usage, &id, nil, 25)
+	if err != nil || out.ErrorCode != CanaryErrVisibleCapped || len(out.Text) != 30 {
+		t.Fatalf("code=%q err=%v len=%d", out.ErrorCode, err, len(out.Text))
+	}
+}

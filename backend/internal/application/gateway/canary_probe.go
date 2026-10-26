@@ -28,6 +28,10 @@ type CanaryProbeInput struct {
 	// IdleTimeout bounds the wait for the first generated token and any later
 	// silent gap between stream chunks. Zero uses DefaultCanaryIdleTimeout.
 	IdleTimeout time.Duration
+	// MaxVisibleChars, when positive, stops reading once that much visible
+	// text has arrived and returns it as a successful (truncated) output.
+	// Guards against runaway outputs when upstream ignores MaxOutputTokens.
+	MaxVisibleChars int
 }
 
 // DefaultCanaryIdleTimeout is the first-token / inter-chunk silence budget.
@@ -133,7 +137,7 @@ func (s *Service) ProbeAccountCanary(ctx context.Context, input CanaryProbeInput
 		return CanaryProbeOutput{RequestID: requestID, ErrorCode: errorCode, DurationMS: time.Since(startedAt).Milliseconds(), Text: strings.TrimSpace(string(raw))},
 			fmt.Errorf("%w: 上游返回 %d: %s", ErrCanaryTransport, result.StatusCode, strings.TrimSpace(string(raw)))
 	}
-	out, readErr := readCanaryStream(ctx, result.Body, startedAt, watchdog, &usage, &responseID, result.MarkFirstToken)
+	out, readErr := readCanaryStreamLimited(ctx, result.Body, startedAt, watchdog, &usage, &responseID, result.MarkFirstToken, input.MaxVisibleChars)
 	out.RequestID = requestID
 	errorCode = out.ErrorCode
 	return out, readErr
@@ -188,6 +192,13 @@ func (w *canaryWatchdog) fired() bool {
 // deadline (not the watchdog-cancelled child). Partial output is returned on
 // failure so it can be stored as an artifact.
 func readCanaryStream(parentCtx context.Context, body io.Reader, startedAt time.Time, watchdog *canaryWatchdog, usage *Usage, responseID *string, markFirst func()) (CanaryProbeOutput, error) {
+	return readCanaryStreamLimited(parentCtx, body, startedAt, watchdog, usage, responseID, markFirst, 0)
+}
+
+// CanaryErrVisibleCapped marks an output cut at MaxVisibleChars.
+const CanaryErrVisibleCapped = "canary_visible_capped"
+
+func readCanaryStreamLimited(parentCtx context.Context, body io.Reader, startedAt time.Time, watchdog *canaryWatchdog, usage *Usage, responseID *string, markFirst func(), maxVisible int) (CanaryProbeOutput, error) {
 	var firstAt time.Time
 	var visible strings.Builder
 	var reasoningChars int64
@@ -264,6 +275,9 @@ func readCanaryStream(parentCtx context.Context, body io.Reader, startedAt time.
 				reasoningText.WriteString(delta.Reasoning + delta.ReasoningContent + delta.ThinkingContent)
 			}
 			visible.WriteString(delta.Content)
+		}
+		if maxVisible > 0 && visible.Len() >= maxVisible {
+			return build(CanaryErrVisibleCapped), nil
 		}
 		// Before the first generated token only real tokens count as progress;
 		// afterwards any data chunk resets the idle budget.
