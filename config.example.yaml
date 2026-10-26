@@ -171,6 +171,21 @@ canary:
   # 首字/流间隔空闲超时：上游一直不出字时提前结束（不超过 probeTimeout）
   idleTimeout: 75s
   retentionDays: 30
+  # 模型指纹探针（v3.5.16，基于 lm-detector，MIT）：让模型凭第一反应写约 300 个
+  # 1–355 的整数，与内置参考库比对排出最像的模型。只打“疑似换模型”标记，绝不禁用账号。
+  # enabled=false 时不定时跑，但管理后台仍可手动触发。
+  fingerprint:
+    enabled: false
+    interval: 24h
+    initialDelay: 30m
+    sampleAccounts: 3        # 每轮抽测的账号数（轮流）
+    minConfidence: 0.6       # 最像模型的置信度低于此值视为无法判定
+    suspectAfter: 2          # 连续不一致次数（且其他账号正常）才标记
+    familyTolerant: true     # grok-4.5/4.6/4.7 互相混淆算同家族，不算失败
+    models: [grok-4.7, grok-4.5]
+    reasoningEffort: low
+    maxOutputTokens: 4000
+    autoAfterFails: 2        # 推理题连续失败 N 次后自动加测一次指纹（0 关闭）
 
 # 后台定时同步额度 / 账单 / 用量统计（v3.4.5）。复用「同步全部」的路径，
 # 只同步启用且未失效的 Build / Web / Console 账号；每个请求前随机等待 0-5s，

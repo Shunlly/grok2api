@@ -18,6 +18,7 @@ import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { FingerprintPanel } from "@/features/quality-guard/fingerprint-panel";
 import { CanaryPanel } from "@/features/quality-guard/canary-panel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ProbeProfilesPanel } from "@/features/quality-guard/probe-profiles-panel";
@@ -238,7 +239,10 @@ export function QualityGuardPage() {
           <TabsTrigger value="canary">{t("qualityGuard.canary.tab")}</TabsTrigger>
         </TabsList>
         <TabsContent value="canary" className="mt-6">
-          <CanaryPanel />
+          <div className="space-y-8">
+            <CanaryPanel />
+            <FingerprintPanel />
+          </div>
         </TabsContent>
         {profilesTabVisible && <TabsContent value="profiles" className="mt-6">
           <ProbeProfilesPanel />

@@ -2496,6 +2496,26 @@ i18n.on("languageChanged", (language) => {
   if (typeof document !== "undefined") document.documentElement.lang = language;
 });
 
+type LooseTree = Record<string, unknown>;
+Object.assign(resources["zh-CN"].translation.accounts as unknown as Record<string, string>, { qualityFlagSubstituted: "模型指纹疑似被替换：声称 {{model}}，识别为 {{top}}（{{confidence}}%），{{time}}" });
+Object.assign(resources.en.translation.accounts as unknown as Record<string, string>, { qualityFlagSubstituted: "Fingerprint suggests substitution: claims {{model}}, looks like {{top}} ({{confidence}}%), {{time}}" });
+(resources["zh-CN"].translation.qualityGuard as unknown as LooseTree).fingerprint = {
+  title: "模型指纹", description: "让模型凭直觉写出约 300 个 1-355 的整数，与参考库分布比对识别真实模型。连续 {{count}} 次不一致（置信度 ≥ {{confidence}}）且其他账号正常时标记疑似替换；只标记，不停用。",
+  sample: "每轮抽样 {{count}} 个账号", disabled: "定时指纹已关闭（可手动运行）", familyTolerant: "同族版本互认", familyStrict: "严格版本匹配",
+  attribution: "指纹算法与参考库来自 Ikaleio/lm-detector（MIT）", run: "运行指纹", running: "指纹运行中", rerun: "重测该账号", triggered: "已触发指纹轮次 {{id}}", conflict: "已有指纹轮次在运行",
+  none: "暂无指纹结果", model: "声称模型", verdict: "判定", candidates: "Top 3 候选", valid: "有效数", suspect: "疑似替换", showDetail: "查看原始输出", hideDetail: "收起",
+  top: "识别", tokens: "输出 token", trigger: "触发", output: "第 {{index}} 组输出（有效 {{count}}）", prompt: "提示词",
+  verdicts: { match: "一致", family: "同族", mismatch: "不一致", inconclusive: "不确定", insufficient: "样本不足" },
+};
+(resources.en.translation.qualityGuard as unknown as LooseTree).fingerprint = {
+  title: "Model fingerprint", description: "The model writes ~300 first-instinct integers in 1-355; the distribution is matched against a reference bank. After {{count}} consecutive mismatches (confidence ≥ {{confidence}}) while other accounts pass, the account is flagged as possibly substituted. Flag only, never disables.",
+  sample: "{{count}} accounts sampled per round", disabled: "Scheduled fingerprinting off (manual runs allowed)", familyTolerant: "Same-family versions accepted", familyStrict: "Strict version match",
+  attribution: "Fingerprint algorithm and reference bank from Ikaleio/lm-detector (MIT)", run: "Run fingerprint", running: "Fingerprint running", rerun: "Re-run this account", triggered: "Fingerprint round {{id}} triggered", conflict: "A fingerprint round is already running",
+  none: "No fingerprint results yet", model: "Claimed model", verdict: "Verdict", candidates: "Top 3 candidates", valid: "Valid", suspect: "Possibly substituted", showDetail: "Show raw output", hideDetail: "Hide",
+  top: "Detected", tokens: "Output tokens", trigger: "Trigger", output: "Output {{index}} ({{count}} valid)", prompt: "Prompt",
+  verdicts: { match: "Match", family: "Same family", mismatch: "Mismatch", inconclusive: "Inconclusive", insufficient: "Insufficient" },
+};
+
 if (typeof document !== "undefined") document.documentElement.lang = i18n.language;
 
 export { i18n };

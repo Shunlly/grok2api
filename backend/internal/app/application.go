@@ -448,6 +448,13 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*Applicat
 		Model: cfg.Canary.Model, ReasoningEffort: cfg.Canary.ReasoningEffort, MaxOutputTokens: cfg.Canary.MaxOutputTokens,
 		ProbeTimeout: cfg.Canary.ProbeTimeout.Value(), IdleTimeout: cfg.Canary.IdleTimeout.Value(), Retention: time.Duration(cfg.Canary.RetentionDays) * 24 * time.Hour,
 		ArtifactRetention: time.Duration(cfg.Audit.RetentionDays) * 24 * time.Hour,
+		Fingerprint: canaryapp.FingerprintConfig{
+			Enabled: cfg.Canary.Fingerprint.Enabled, Interval: cfg.Canary.Fingerprint.Interval.Value(), InitialDelay: cfg.Canary.Fingerprint.InitialDelay.Value(),
+			SampleAccounts: cfg.Canary.Fingerprint.SampleAccounts, MinConfidence: cfg.Canary.Fingerprint.MinConfidence,
+			SuspectAfter: cfg.Canary.Fingerprint.SuspectAfter, FamilyTolerant: cfg.Canary.Fingerprint.FamilyTolerant,
+			Models: cfg.Canary.Fingerprint.Models, ReasoningEffort: cfg.Canary.Fingerprint.ReasoningEffort,
+			MaxOutputTokens: cfg.Canary.Fingerprint.MaxOutputTokens, AutoAfterFails: cfg.Canary.Fingerprint.AutoAfterFails,
+		},
 	}, qualityGuardIdentity.ID, gatewayService, accountRepo, relational.NewCanaryRepository(database), logger)
 	accountService.SetAutoReactivateConfig(accountapp.AutoReactivateConfig{
 		Enabled: cfg.AutoReactivate.Enabled, Interval: cfg.AutoReactivate.Interval.Value(),
@@ -609,6 +616,7 @@ func (a *Application) Run(ctx context.Context) error {
 		return nil
 	})
 	startBackground("canary_prober", a.canary.Run)
+	startBackground("canary_fingerprint", a.canary.RunFingerprint)
 	startBackground("quota_auto_sync", a.quotaAutoSync.Run)
 	startBackground("performance_metrics", func(taskCtx context.Context) error {
 		a.runPeriodicTask(taskCtx, time.Minute, "performance_metrics", func(context.Context) error {

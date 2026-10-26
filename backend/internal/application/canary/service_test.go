@@ -24,7 +24,8 @@ func (f *fakeProber) ProbeAccountCanary(_ context.Context, in gatewayapp.CanaryP
 	if f.fail[in.AccountID] {
 		return gatewayapp.CanaryProbeOutput{ReasoningText: "partial", ReasoningChars: 7, StreamBytes: 120, StreamChunks: 3, ErrorCode: gatewayapp.CanaryErrIdleTimeout}, gatewayapp.ErrCanaryTransport
 	}
-	return gatewayapp.CanaryProbeOutput{Text: "Final answer: 401", VisibleChars: 17, ReasoningTokens: f.reasoning[in.AccountID], OutputTokens: 1000}, nil
+	answer := "Final answer: " + answerFor(in.Prompt)
+	return gatewayapp.CanaryProbeOutput{Text: answer, VisibleChars: int64(len(answer)), ReasoningTokens: f.reasoning[in.AccountID], OutputTokens: 1000}, nil
 }
 
 type fakeAccounts struct{}
@@ -97,4 +98,14 @@ func TestTriggerRejectsConcurrentRound(t *testing.T) {
 	if _, err := service.Trigger(context.Background()); !errors.Is(err, ErrRoundRunning) {
 		t.Fatalf("err = %v", err)
 	}
+}
+
+// answerFor returns the expected answer of a generated canary prompt.
+func answerFor(prompt string) string {
+	for seq := int64(0); seq < 1000; seq++ {
+		if p := canary.Generate(seq); p.Text == prompt {
+			return p.Expected
+		}
+	}
+	return "0"
 }
