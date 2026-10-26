@@ -46,7 +46,8 @@ func TestRoundStoresArtifactAndDetail(t *testing.T) {
 		t.Fatalf("detail = %#v err=%v", detail, err)
 	}
 	a := detail.Artifact
-	if a.Response != "Final answer: 401" || !strings.Contains(a.Prompt, "1000") || a.Expected != "401" || !strings.Contains(a.CheckDetail, "401") || a.ReasoningEffort != "high" {
+	want := canary.Generate(0)
+	if a.Response != "Final answer: "+want.Expected || a.Prompt != want.Text || a.Expected != want.Expected || !strings.Contains(a.CheckDetail, want.Expected) || a.ReasoningEffort != "high" {
 		t.Fatalf("artifact = %#v", a)
 	}
 	failed, err := service.ResultDetail(context.Background(), results[2].ID)

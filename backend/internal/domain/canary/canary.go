@@ -36,7 +36,8 @@ type Prompt struct {
 	Expected string // reasoning: exact integer answer
 }
 
-// Prompts rotate per round so every account in one round sees the same task.
+// Prompts are the legacy fixed tasks. Only the SVG task stays in rotation;
+// the reasoning ones remain so older stored results can still be explained.
 var Prompts = []Prompt{
 	{ID: "count-3-5-not-7", Kind: KindReasoning, Expected: "401", Text: "How many positive integers n with 1 <= n <= 1000 are divisible by 3 or by 5 but not divisible by 7? Think carefully, then end your reply with a final line exactly in the form `Final answer: <integer>`."},
 	{ID: "svg-shapes", Kind: KindSVG, Text: "Output only a single self-contained HTML file (no external resources, under 3000 characters) containing an inline SVG with viewBox=\"0 0 200 200\" that shows a red circle, a blue square (rect) and a green triangle (polygon). The circle must rotate continuously around the center using <animateTransform> or a CSS @keyframes animation. Output only the HTML."},
@@ -44,12 +45,21 @@ var Prompts = []Prompt{
 	{ID: "domino-2x10", Kind: KindReasoning, Expected: "89", Text: "In how many ways can a 2 x 10 rectangle be tiled completely with 1 x 2 dominoes (rotations allowed, tilings that differ only by symmetry count as different)? Think carefully, then end your reply with a final line exactly in the form `Final answer: <integer>`."},
 }
 
-// PromptForRound picks the rotating prompt for a round sequence number.
+// svgEvery puts the SVG structure task into every n-th round; all other
+// rounds use a freshly generated reasoning instance.
+const svgEvery = 5
+
+// PromptForRound picks the prompt for a round sequence number. Reasoning
+// rounds use a parameterized instance seeded by the sequence, so every
+// account in one round gets the same question.
 func PromptForRound(sequence int64) Prompt {
 	if sequence < 0 {
 		sequence = -sequence
 	}
-	return Prompts[sequence%int64(len(Prompts))]
+	if sequence%svgEvery == svgEvery-1 {
+		return Prompts[1]
+	}
+	return Generate(sequence)
 }
 
 // Result is one stored probe of one account.
@@ -235,6 +245,12 @@ type AccountFlag struct {
 	LastCanaryFailAt *time.Time `json:"lastCanaryFailAt,omitempty"`
 	LastCanaryStatus string     `json:"lastCanaryStatus,omitempty"`
 	LastCanaryReason string     `json:"lastCanaryReason,omitempty"`
+	// Fingerprint (model identity) flag, observe-only.
+	SuspectSubstituted    bool       `json:"suspectSubstituted,omitempty"`
+	FingerprintModel      string     `json:"fingerprintModel,omitempty"`
+	FingerprintTop        string     `json:"fingerprintTop,omitempty"`
+	FingerprintConfidence float64    `json:"fingerprintConfidence,omitempty"`
+	LastFingerprintAt     *time.Time `json:"lastFingerprintAt,omitempty"`
 }
 
 // Artifact is the stored output of one probe, kept for admin inspection.
@@ -312,6 +328,9 @@ func ExplainCheck(prompt Prompt, text string) string {
 
 // PromptByID returns the prompt with the given id (zero Prompt when unknown).
 func PromptByID(id string) Prompt {
+	if prompt, ok := generatedByID(id); ok {
+		return prompt
+	}
 	for _, prompt := range Prompts {
 		if prompt.ID == id {
 			return prompt

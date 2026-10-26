@@ -1,0 +1,6 @@
+Vendored from https://github.com/Ikaleio/lm-detector (MIT License, Copyright (c) 2026 xqy2006)
+Upstream commit: 1e58ed83c1cde17f88cba89560ad4d083042ae92
+Files: sdk/go/*.go (analysis, challenge, codec, data, features, lmfpd, ranker, request, sample), sdk/go/templates.json,
+       data/shared_detector.bin (verbatim), data/bank.json (subset of data/unified_bank.json: built_at and
+       models[].{id,display_name,family,family_name,response_count} only).
+grok2api additions: embedded.go. Upstream files are unmodified; see LICENSE.

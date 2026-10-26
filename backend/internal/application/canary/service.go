@@ -33,6 +33,8 @@ type Config struct {
 	Retention   time.Duration
 	// ArtifactRetention keeps prompt/answer/reasoning artifacts (aligned with audit retention).
 	ArtifactRetention time.Duration
+	// Fingerprint is the observe-only model identity probe.
+	Fingerprint FingerprintConfig
 }
 
 type Prober interface {
@@ -72,6 +74,9 @@ type Service struct {
 	lastRun time.Time
 	nextRun time.Time
 	active  string
+
+	fpCfg FingerprintConfig
+	fp    fingerprintState
 }
 
 func NewService(cfg Config, clientKeyID uint64, prober Prober, accounts Accounts, store Store, logger *slog.Logger) *Service {
@@ -105,7 +110,7 @@ func NewService(cfg Config, clientKeyID uint64, prober Prober, accounts Accounts
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Service{cfg: cfg, clientKeyID: clientKeyID, prober: prober, accounts: accounts, store: store, logger: logger}
+	return &Service{cfg: cfg, fpCfg: normalizeFingerprint(cfg.Fingerprint), clientKeyID: clientKeyID, prober: prober, accounts: accounts, store: store, logger: logger}
 }
 
 // Run is the scheduler loop. It returns when ctx is done.
@@ -184,10 +189,8 @@ func (s *Service) ProbeAccount(ctx context.Context, accountID uint64, accountNam
 	if err != nil {
 		return canary.Result{}, err
 	}
-	prompt := canary.PromptForRound(sequence)
-	for offset := int64(1); prompt.Kind == canary.KindSVG && offset < int64(len(canary.Prompts)); offset++ {
-		prompt = canary.PromptForRound(sequence + offset)
-	}
+	// Recovery checks always use a reasoning instance (SVG cannot judge thinking).
+	prompt := canary.Generate(sequence)
 	result := canary.Result{
 		RoundID: roundID, Trigger: "recovery", AccountID: accountID, AccountName: accountName,
 		Model: s.cfg.Model, PromptID: prompt.ID, PromptKind: prompt.Kind, CreatedAt: time.Now().UTC(),
@@ -334,6 +337,7 @@ func (s *Service) runRoundLocked(ctx context.Context, roundID, trigger string) (
 			s.logger.Warn("canary_artifact_prune_failed", "error", err)
 		}
 	}
+	s.maybeAutoFingerprint(ctx, trigger, results)
 	return results, nil
 }
 
@@ -435,11 +439,14 @@ type accountFlagStore interface {
 
 // AccountFlags returns accounts with real quality hits in the last window.
 func (s *Service) AccountFlags(ctx context.Context, window time.Duration) ([]canary.AccountFlag, error) {
-	store, ok := s.store.(accountFlagStore)
-	if !ok {
-		return []canary.AccountFlag{}, nil
+	flags := []canary.AccountFlag{}
+	if store, ok := s.store.(accountFlagStore); ok {
+		var err error
+		if flags, err = store.AccountQualityFlags(ctx, time.Now().UTC().Add(-window)); err != nil {
+			return nil, err
+		}
 	}
-	return store.AccountQualityFlags(ctx, time.Now().UTC().Add(-window))
+	return s.mergeFingerprintFlags(ctx, flags, window), nil
 }
 
 func (s *Service) newArtifact(prompt canary.Prompt, out gatewayapp.CanaryProbeOutput) canary.Artifact {

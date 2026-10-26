@@ -60,10 +60,10 @@ export function AccountNameCell({ account, qualityFlag }: { account: AccountDTO;
           </TooltipTrigger>
           <TooltipContent>{account.name}</TooltipContent>
         </Tooltip>
-        {qualityFlag && (qualityFlag.degradedHits > 0 || qualityFlag.canaryFailures > 0) ? (
+        {qualityFlag && (qualityFlag.degradedHits > 0 || qualityFlag.canaryFailures > 0 || qualityFlag.suspectSubstituted) ? (
           <Tooltip>
             <TooltipTrigger asChild>
-              <span tabIndex={0} aria-label={t("accounts.qualityFlagLabel")} className="inline-flex shrink-0 cursor-help items-center text-amber-600 dark:text-amber-400">
+              <span tabIndex={0} aria-label={t("accounts.qualityFlagLabel")} className={qualityFlag.suspectSubstituted ? "inline-flex shrink-0 cursor-help items-center text-destructive" : "inline-flex shrink-0 cursor-help items-center text-amber-600 dark:text-amber-400"}>
                 <AlertTriangle className="size-3.5" />
               </span>
             </TooltipTrigger>
@@ -71,6 +71,7 @@ export function AccountNameCell({ account, qualityFlag }: { account: AccountDTO;
               <div className="space-y-0.5 text-xs">
                 {qualityFlag.degradedHits > 0 ? <div>{t("accounts.qualityFlagDegraded", { count: qualityFlag.degradedHits, time: qualityFlag.lastDegradedAt ? formatDateTime(qualityFlag.lastDegradedAt, i18n.language) : "-" })}</div> : null}
                 {qualityFlag.canaryFailures > 0 ? <div>{t("accounts.qualityFlagCanary", { count: qualityFlag.canaryFailures, time: qualityFlag.lastCanaryFailAt ? formatDateTime(qualityFlag.lastCanaryFailAt, i18n.language) : "-", reason: qualityFlag.lastCanaryReason || qualityFlag.lastCanaryStatus || "-" })}</div> : null}
+                {qualityFlag.suspectSubstituted ? <div className="text-destructive">{t("accounts.qualityFlagSubstituted", { model: qualityFlag.fingerprintModel || "-", top: qualityFlag.fingerprintTop || "-", confidence: Math.round((qualityFlag.fingerprintConfidence ?? 0) * 100), time: qualityFlag.lastFingerprintAt ? formatDateTime(qualityFlag.lastFingerprintAt, i18n.language) : "-" })}</div> : null}
                 <div className="text-muted-foreground">{t("accounts.qualityFlagHint")}</div>
               </div>
             </TooltipContent>

@@ -1,5 +1,5 @@
 import { apiRequest } from "@/shared/api/client";
-import { createObjectDecoder, hasShape, isArrayOf, isBoolean, isNumber, isObject, isOneOf, isOptional, isRecordOf, isString } from "@/shared/api/decoder";
+import { createObjectDecoder, createValidatedDecoder, hasShape, isArrayOf, isBoolean, isNumber, isObject, isOneOf, isOptional, isRecordOf, isString } from "@/shared/api/decoder";
 import { qualityGuardStatusPath } from "./quality-guard-query";
 
 export type QualityGuardPolicy = {
@@ -378,13 +378,54 @@ export type AccountQualityFlagDTO = {
   lastCanaryFailAt?: string;
   lastCanaryStatus?: string;
   lastCanaryReason?: string;
+  suspectSubstituted?: boolean;
+  fingerprintModel?: string;
+  fingerprintTop?: string;
+  fingerprintConfidence?: number;
+  lastFingerprintAt?: string;
 };
 
 const decodeAccountQualityFlags = createObjectDecoder<{ flags: AccountQualityFlagDTO[] }>("account quality flags", {
-  flags: isArrayOf(hasShape({ accountId: isString, degradedHits: isNumber, canaryFailures: isNumber, lastDegradedAt: isOptional(isString), lastCanaryFailAt: isOptional(isString), lastCanaryStatus: isOptional(isString), lastCanaryReason: isOptional(isString) })),
+  flags: isArrayOf(hasShape({ accountId: isString, degradedHits: isNumber, canaryFailures: isNumber, lastDegradedAt: isOptional(isString), lastCanaryFailAt: isOptional(isString), lastCanaryStatus: isOptional(isString), lastCanaryReason: isOptional(isString), suspectSubstituted: isOptional(isBoolean), fingerprintModel: isOptional(isString), fingerprintTop: isOptional(isString), fingerprintConfidence: isOptional(isNumber), lastFingerprintAt: isOptional(isString) })),
 });
 
 /** Accounts with real quality hits (quality_degraded or failed canary) in the last 7 days. */
 export function getAccountQualityFlags(): Promise<{ flags: AccountQualityFlagDTO[] }> {
   return apiRequest("/api/admin/v1/quality/account-flags", {}, decodeAccountQualityFlags);
+}
+
+export type FingerprintVerdict = "match" | "family" | "mismatch" | "inconclusive" | "insufficient" | "";
+export interface FingerprintCandidateDTO { model: string; family: string; score: number; probability: number }
+export interface FingerprintResultDTO {
+  id: number; roundId: string; trigger: string; accountId: number; accountName: string; model: string;
+  status: CanaryStatus; verdict: FingerprintVerdict; topModel: string; topFamily: string; confidence: number;
+  candidates: FingerprintCandidateDTO[]; validCounts: number[]; validOutputs: number; outputTokens: number; durationMs: number;
+  consecutiveMismatches: number; suspectSubstituted: boolean; reasons: string; error?: string; requestIds: string;
+  prompts?: string[]; rawOutputs?: string[]; createdAt: string;
+}
+export interface FingerprintAccountDTO { accountId: number; accountName: string; model: string; latest: FingerprintResultDTO; history: FingerprintResultDTO[] }
+export interface FingerprintSummaryDTO {
+  enabled: boolean; observeOnly: boolean; interval: string; sampleAccounts: number; minConfidence: number; suspectAfter: number;
+  familyTolerant: boolean; models: string[]; reasoningEffort: string; running: boolean; activeRound?: string; lastRun?: string; nextRun?: string;
+  accounts: FingerprintAccountDTO[];
+}
+const isFingerprintResult = hasShape({
+  id: isNumber, accountId: isNumber, model: isString, status: isString, verdict: isString, topModel: isString, confidence: isNumber,
+  candidates: isArrayOf(hasShape({ model: isString, family: isString, score: isNumber, probability: isNumber })),
+  validCounts: isArrayOf(isNumber), validOutputs: isNumber, durationMs: isNumber, suspectSubstituted: isBoolean, createdAt: isString,
+  prompts: isOptional(isArrayOf(isString)), rawOutputs: isOptional(isArrayOf(isString)),
+});
+const decodeFingerprintSummary = createObjectDecoder<FingerprintSummaryDTO>("fingerprint summary", {
+  enabled: isBoolean, observeOnly: isBoolean, interval: isString, minConfidence: isNumber, suspectAfter: isNumber, models: isArrayOf(isString), running: isBoolean,
+  accounts: isArrayOf(hasShape({ accountId: isNumber, accountName: isString, model: isString, latest: isFingerprintResult, history: isArrayOf(isFingerprintResult) })),
+});
+export function getFingerprintSummary(): Promise<FingerprintSummaryDTO> {
+  return apiRequest("/api/admin/v1/quality/canary/fingerprint?history=8", {}, decodeFingerprintSummary);
+}
+export function getFingerprintDetail(id: number): Promise<FingerprintResultDTO> {
+  return apiRequest(`/api/admin/v1/quality/canary/fingerprint/results/${id}`, {}, createValidatedDecoder<FingerprintResultDTO>("fingerprint result", isFingerprintResult));
+}
+/** Manual fingerprint round; works even when the scheduled probe is off. Empty list samples accounts. */
+export function runFingerprintRound(accountIds: number[] = []): Promise<{ roundId: string }> {
+  return apiRequest("/api/admin/v1/quality/canary/fingerprint/run", { method: "POST", body: { accountIds: accountIds.map(String) } }, createObjectDecoder("fingerprint run", { roundId: isString }));
 }

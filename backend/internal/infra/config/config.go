@@ -313,6 +313,26 @@ type CanaryConfig struct {
 	// IdleTimeout fails silent probes early (first token / gap between chunks).
 	IdleTimeout   Duration `yaml:"idleTimeout"`
 	RetentionDays int      `yaml:"retentionDays"`
+	// Fingerprint is the observe-only model identity probe (lm-detector).
+	Fingerprint CanaryFingerprintConfig `yaml:"fingerprint"`
+}
+
+// CanaryFingerprintConfig configures the number-fingerprint identity probe.
+// It only flags accounts (suspect_substituted); it never disables them.
+type CanaryFingerprintConfig struct {
+	Enabled         bool     `yaml:"enabled"`
+	Interval        Duration `yaml:"interval"`
+	InitialDelay    Duration `yaml:"initialDelay"`
+	SampleAccounts  int      `yaml:"sampleAccounts"`
+	MinConfidence   float64  `yaml:"minConfidence"`
+	SuspectAfter    int      `yaml:"suspectAfter"`
+	FamilyTolerant  bool     `yaml:"familyTolerant"`
+	Models          []string `yaml:"models"`
+	ReasoningEffort string   `yaml:"reasoningEffort"`
+	MaxOutputTokens int      `yaml:"maxOutputTokens"`
+	// AutoAfterFails probes an account after this many consecutive reasoning
+	// canary failures (0 disables).
+	AutoAfterFails int `yaml:"autoAfterFails"`
 }
 
 // QuotaConfig controls the scheduled background quota / billing / usage
@@ -819,6 +839,18 @@ func (c Config) Validate() error {
 	if c.AutoReactivate.MaxAge.Value() < time.Hour || c.AutoReactivate.MaxAge.Value() > 30*24*time.Hour {
 		return errors.New("autoReactivate.maxAge 必须在 1 小时到 30 天之间")
 	}
+	if fp := c.Canary.Fingerprint; fp.Enabled && fp.Interval.Value() < time.Hour {
+		return errors.New("canary.fingerprint.interval 不能小于 1h")
+	}
+	if fp := c.Canary.Fingerprint; fp.MinConfidence < 0 || fp.MinConfidence > 1 {
+		return errors.New("canary.fingerprint.minConfidence 必须在 0 到 1 之间")
+	}
+	if fp := c.Canary.Fingerprint; fp.SampleAccounts < 0 || fp.SampleAccounts > 50 || fp.SuspectAfter < 0 || fp.SuspectAfter > 10 || fp.AutoAfterFails < 0 || fp.AutoAfterFails > 10 {
+		return errors.New("canary.fingerprint.sampleAccounts/suspectAfter/autoAfterFails 超出允许范围")
+	}
+	if fp := c.Canary.Fingerprint; fp.MaxOutputTokens < 0 || fp.MaxOutputTokens > 32000 {
+		return errors.New("canary.fingerprint.maxOutputTokens 必须在 0 到 32000 之间")
+	}
 	if c.Canary.MaxOutputTokens < 0 || c.Canary.MaxOutputTokens > 32000 {
 		return errors.New("canary.maxOutputTokens 必须在 0 到 32000 之间")
 	}
@@ -1063,6 +1095,11 @@ func defaultConfig() Config {
 			Enabled: false, Interval: Duration(6 * time.Hour), InitialDelay: Duration(10 * time.Minute),
 			Model: "grok-4.7", ReasoningEffort: "high", MaxOutputTokens: 6000,
 			ProbeTimeout: Duration(5 * time.Minute), IdleTimeout: Duration(75 * time.Second), RetentionDays: 30,
+			Fingerprint: CanaryFingerprintConfig{
+				Enabled: false, Interval: Duration(24 * time.Hour), InitialDelay: Duration(30 * time.Minute),
+				SampleAccounts: 3, MinConfidence: 0.6, SuspectAfter: 2, FamilyTolerant: true,
+				Models: []string{"grok-4.7", "grok-4.5"}, ReasoningEffort: "low", MaxOutputTokens: 4000, AutoAfterFails: 2,
+			},
 		},
 		Quota: QuotaConfig{
 			AutoSyncInterval: Duration(time.Hour), AutoSyncInitialDelay: Duration(2 * time.Minute), AutoSyncConcurrency: 2,

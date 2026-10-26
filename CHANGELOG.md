@@ -2,6 +2,17 @@
 
 Shunlly/grok2api fork of [chenyme/grok2api](https://github.com/chenyme/grok2api).
 
+## v3.5.16 — 2026-10-26
+
+### Added
+- 质量守护新增「模型指纹」探测（默认关闭，只标记不停用）：
+  - 集成 [Ikaleio/lm-detector](https://github.com/Ikaleio/lm-detector)（MIT，commit `1e58ed8`）的 Go SDK 与参考库，通过 `go:embed` 内置，镜像约增加 4.5MB。
+  - 每次对账号发 3 组并行「凭直觉写 1-355 整数」请求（低思考、禁止工具），比对分布得出 Top 候选模型与置信度。有效数字不足 80 个记为跳过。
+  - 识别结果与声称模型不一致且置信度 ≥ `minConfidence` 记为不一致；grok-4.5/4.6/4.7 同族互认（`familyTolerant`）。连续 `suspectAfter` 次不一致且其他账号正常时，标记「疑似替换」，并显示在账号列表。
+  - 配置 `canary.fingerprint`（enabled、interval 24h、sampleAccounts 3、minConfidence 0.6、suspectAfter 2、familyTolerant、models）。推理金丝雀连续失败后会自动加测一次指纹；手动运行不受 enabled 限制。
+  - 新接口：`GET /quality/canary/fingerprint`、`POST /quality/canary/fingerprint/run`、`GET /quality/canary/fingerprint/results/:id`；金丝雀页新增指纹区块（Top 3、有效数、耗时、原始输出；适配手机）。
+- 推理金丝雀改为 14 种参数化题目生成器（模幂、容斥、铺砖计数、CRT 等），按轮次种子出题，同一轮所有账号同题，答案本地计算；每 5 轮仍插入一次 SVG 任务。评分规则不变。
+
 ## v3.5.15 — 2026-10-26
 
 ### Fixed
