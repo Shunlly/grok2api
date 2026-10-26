@@ -21,6 +21,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { EgressAutomation, EgressSources } from "@/features/settings/egress-operations";
 import { showProbeToast } from "@/features/settings/egress-probe-toast";
+import { withPending } from "@/features/settings/pending-set";
 import { EgressProxyProfiles } from "@/features/settings/egress-proxy-profiles";
 import { cleanupUnhealthyEgressNodes, createEgressNode, deleteEgressNode, deleteEgressNodes, getEgressNodeProxyURL, getEgressProxyProfile, importEgressText, listEgressProxyProfiles, listEgressNodes, previewUnhealthyEgressNodes, refreshEgressClearance, testEgressNode, updateEgressNode, updateEgressNodesEnabled, type ClearanceMode, type EgressIPProbeDTO, type EgressNodeDTO, type EgressNodeInput, type EgressScope } from "@/features/settings/settings-api";
 import { ErrorState, TableLoadingRow } from "@/shared/components/data-state";
@@ -160,11 +161,18 @@ export function EgressNodes({ title, clearanceMode }: { title: string; clearance
     onSuccess: () => { void queryClient.invalidateQueries({ queryKey: ["egress-nodes"] }); toast.success(t("settings.egress.clearanceRefreshed")); },
     onError: (error) => toast.error(error instanceof Error ? error.message : t("settings.egress.operationFailed")),
   });
+  // Probes can take up to ~15s (IPv6 timeout). Track pending tests per node so
+  // one running probe does not disable 测试代理 on every other row.
+  const [testingIds, setTestingIds] = useState<ReadonlySet<string>>(() => new Set());
   const testNode = useMutation({
     mutationFn: testEgressNode,
+    onMutate: (id) => { setTestingIds((current) => withPending(current, id, true)); },
     onSuccess: (result) => showProbeToast(result, t),
     onError: (error) => showError(error, t("settings.egress.operationFailed")),
-    onSettled: () => { void queryClient.invalidateQueries({ queryKey: ["egress-nodes"] }); },
+    onSettled: (_result, _error, id) => {
+      setTestingIds((current) => withPending(current, id, false));
+      void queryClient.invalidateQueries({ queryKey: ["egress-nodes"] });
+    },
   });
 
   function openCreate() {
@@ -327,13 +335,13 @@ export function EgressNodes({ title, clearanceMode }: { title: string; clearance
                 <TableCell><HealthMeter value={node.health} /></TableCell>
                 <TableCell><ProbeSummary node={node} /></TableCell>
                 <TableActionCell>
-                  <DropdownMenu>
+                  <DropdownMenu modal={false}>
                     <DropdownMenuTrigger asChild><Button type="button" variant="ghost" size="icon" className="size-8" aria-label={t("common.actions")}><MoreHorizontal /></Button></DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => openEdit(node)}><Pencil />{t("common.edit")}</DropdownMenuItem>
+                      <DropdownMenuItem onSelect={() => openEdit(node)}><Pencil />{t("common.edit")}</DropdownMenuItem>
                       <DropdownMenuSeparator />
                       {clearanceMode !== "manual" && !node.accountBoundProxy && (node.scope === "grok_web" || node.scope === "grok_web_asset" || node.scope === "grok_console") ? <DropdownMenuItem disabled={refreshClearance.isPending} onClick={() => refreshClearance.mutate(node.id)}><RefreshCw />{t("settings.egress.refreshClearance")}</DropdownMenuItem> : null}
-                      <DropdownMenuItem disabled={testNode.isPending || !node.proxyConfigured} onClick={() => testNode.mutate(node.id)}><RefreshCw />{t("settings.egress.test")}</DropdownMenuItem>
+                      <DropdownMenuItem disabled={testingIds.has(node.id) || !node.proxyConfigured} onSelect={() => testNode.mutate(node.id)}><RefreshCw />{t("settings.egress.test")}</DropdownMenuItem>
                       <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => setDeletingNode(node)}><Trash2 />{t("common.delete")}</DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
