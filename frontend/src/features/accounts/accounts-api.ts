@@ -307,10 +307,10 @@ export function listAccounts(input: ListAccountsInput): Promise<PaginatedDTO<Acc
   return apiRequest(`/api/admin/v1/accounts?${query}`, {}, decodeAccountPage);
 }
 
-export type AccountConcurrencyDTO = { total: number; activeAccounts: number; accounts: Record<string, number> };
+export type AccountConcurrencyDTO = { total: number; activeAccounts: number; accounts: Record<string, number>; queued?: number };
 
 const decodeAccountConcurrency = createObjectDecoder<AccountConcurrencyDTO>("account concurrency", {
-  total: isNumber, activeAccounts: isNumber, accounts: isRecordOf(isNumber),
+  total: isNumber, activeAccounts: isNumber, accounts: isRecordOf(isNumber), queued: isOptional(isNumber),
 });
 
 export function getAccountConcurrency(): Promise<AccountConcurrencyDTO> {

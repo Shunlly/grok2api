@@ -212,7 +212,7 @@ type UpdateInput struct {
 	MaxConcurrent    *int
 	MinimumRemaining *float64
 	// ContextWindow sets the Build account context window (0 = auto).
-	ContextWindow          *int
+	ContextWindow *int
 	// AllowedModels replaces the upstream model allowlist; nil = unchanged, empty = allow all.
 	AllowedModels          *[]string
 	CloudflareCookies      *string

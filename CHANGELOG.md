@@ -2,6 +2,16 @@
 
 Shunlly/grok2api fork of [chenyme/grok2api](https://github.com/chenyme/grok2api).
 
+## v3.5.22 — 2026-10-27
+
+### Changed
+- Grok Build 限流分类：上游 429，或错误类型为 `rate_limited` / `concurrency_limit` / `global_rate_limit` 时，按 Retry-After 给该账号短暂冷却（`gateway.rateLimit`：最短 5s、最长 120s，没有 Retry-After 时 10s），不累计失败次数，换号重试，绝不标记重新授权。
+  - `usage_pool_exhausted` / `usage_limit_reached` 归为额度耗尽，走原有的长时额度冷却。
+  - 所有账号都被限流时，向客户端返回 429（OpenAI / Anthropic 均为 `rate_limit_error`），并透传 Retry-After。
+- 请求排队：所有可用账号都达到 `max_concurrent`，或都在短暂限流冷却中时，请求在进程内排队，最多等 `gateway.queue.maxWait`（默认 30s，0 表示关闭），队列上限 `maxLength`（默认 256）。有账号释放或冷却到期时唤醒，客户端断开则立即放弃。超时返回 503，Retry-After 为 5。
+  - `/accounts/concurrency` 新增 `queued` 字段；仪表盘“当前并发”卡片在有请求排队时显示排队数。
+- 上游响应头诊断：上游返回非 2xx 和发生限流时，日志里记录 `retry-after`、`ratelimit*` 以及全部 `x-*` 响应头；请求审计的尝试记录同样保存全部 `x-*` 响应头。名字里带 token/auth/cookie/key/secret 等字样的头，值会被打码。
+
 ## v3.5.21 — 2026-10-27
 
 ### Changed

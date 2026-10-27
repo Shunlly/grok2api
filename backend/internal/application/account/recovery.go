@@ -33,7 +33,7 @@ const (
 	recoveryMaxAttempts = 11
 	// recoveryFastTick wakes the loop between full rounds so short backoffs
 	// (90s, 5m) are honoured; fast ticks only probe due transient reauth rows.
-	recoveryFastTick = time.Minute
+	recoveryFastTick    = time.Minute
 	recoveryQualityHold = 15 * time.Minute
 )
 

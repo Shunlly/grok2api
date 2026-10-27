@@ -743,3 +743,14 @@ func TestEffectivePublicAPIBaseURLPriority(t *testing.T) {
 		})
 	}
 }
+
+func TestGatewayRateLimitAndQueueDefaults(t *testing.T) {
+	value := defaultConfig()
+	if value.Gateway.Queue.MaxWait.Value() != 30*time.Second || value.Gateway.Queue.MaxLength != 256 {
+		t.Fatalf("queue defaults = %+v", value.Gateway.Queue)
+	}
+	rl := value.Gateway.RateLimit
+	if rl.MinCooldown.Value() != 5*time.Second || rl.MaxCooldown.Value() != 120*time.Second || rl.DefaultCooldown.Value() != 10*time.Second {
+		t.Fatalf("rate limit defaults = %+v", rl)
+	}
+}

@@ -1310,6 +1310,12 @@ func (s *Selector) MarkFailureAfterSuccess(ctx context.Context, credential accou
 	return s.markFailure(ctx, credential, 0, 1, status, retryAfter, status == 0)
 }
 
+// markRateLimitCooldown isolates an account for an already-bounded rate-limit
+// window without growing its durable failure count.
+func (s *Selector) markRateLimitCooldown(ctx context.Context, credential account.Credential, status int, cooldown time.Duration) error {
+	return s.markFailure(ctx, credential, credential.FailureCount, credential.FailureCount+1, status, cooldown, true)
+}
+
 // markSoftFailure preserves the real upstream status for diagnostics while
 // applying the bounded, non-accumulating health penalty used for transient
 // network and provider-wide failures.

@@ -468,6 +468,11 @@ func sanitizeDiagnosticHeaders(headers http.Header) map[string][]string {
 		if !isAllowedDiagnosticHeader(lowerName) {
 			continue
 		}
+		if isSensitiveHeaderName(lowerName) {
+			result[http.CanonicalHeaderKey(name)] = []string{"[REDACTED]"}
+			remaining -= len(name) + 10
+			continue
+		}
 		cleanValues := make([]string, 0, min(len(values), 8))
 		for _, value := range values {
 			if len(cleanValues) == 8 || remaining <= len(name) {
@@ -486,6 +491,11 @@ func sanitizeDiagnosticHeaders(headers http.Header) map[string][]string {
 
 func isAllowedDiagnosticHeader(name string) bool {
 	if strings.HasPrefix(name, "x-ratelimit-") || strings.HasPrefix(name, "ratelimit-") {
+		return true
+	}
+	// Every upstream x-* header is diagnostic; secret-looking names are kept
+	// but their values are redacted by sanitizeDiagnosticHeaders.
+	if strings.HasPrefix(name, "x-") {
 		return true
 	}
 	switch name {

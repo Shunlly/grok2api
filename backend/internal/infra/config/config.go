@@ -101,6 +101,24 @@ type GatewayConfig struct {
 	RequestScoped401 RequestScoped401Config `yaml:"requestScoped401"`
 	// Affinity lets busy sticky sessions borrow a less loaded account per request.
 	Affinity AffinityConfig `yaml:"affinity"`
+	// RateLimit bounds the short per-account cooldown for upstream 429 / rate_limited.
+	RateLimit RateLimitConfig `yaml:"rateLimit"`
+	// Queue parks requests while all accounts are saturated or briefly rate-limited.
+	Queue QueueConfig `yaml:"queue"`
+}
+
+// RateLimitConfig: Retry-After is clamped to [minCooldown, maxCooldown];
+// defaultCooldown applies when upstream sends none.
+type RateLimitConfig struct {
+	MinCooldown     Duration `yaml:"minCooldown"`
+	MaxCooldown     Duration `yaml:"maxCooldown"`
+	DefaultCooldown Duration `yaml:"defaultCooldown"`
+}
+
+// QueueConfig: maxWait 0 disables queueing; maxLength caps waiting requests.
+type QueueConfig struct {
+	MaxWait   Duration `yaml:"maxWait"`
+	MaxLength int      `yaml:"maxLength"`
 }
 
 // AffinityConfig: a sticky request spills to another account when the sticky
@@ -581,6 +599,12 @@ func (c Config) Validate() error {
 	if c.Gateway.AutoCompact.ThresholdPercent < 0 || c.Gateway.AutoCompact.ThresholdPercent > 100 {
 		return fmt.Errorf("gateway.autoCompact.thresholdPercent 必须在 0-100 之间")
 	}
+	if c.Gateway.RateLimit.MinCooldown < 0 || c.Gateway.RateLimit.MaxCooldown < 0 || c.Gateway.RateLimit.DefaultCooldown < 0 || (c.Gateway.RateLimit.MaxCooldown > 0 && c.Gateway.RateLimit.MaxCooldown < c.Gateway.RateLimit.MinCooldown) {
+		return errors.New("gateway.rateLimit 冷却时间不能为负数，且 maxCooldown 不能小于 minCooldown")
+	}
+	if c.Gateway.Queue.MaxWait < 0 || c.Gateway.Queue.MaxWait.Value() > 10*time.Minute || c.Gateway.Queue.MaxLength < 0 {
+		return errors.New("gateway.queue.maxWait 必须在 0-10m 之间，maxLength 不能为负数")
+	}
 	if c.Gateway.Affinity.BusyCap < 0 || c.Gateway.Affinity.BusyGap < 0 {
 		return errors.New("gateway.affinity.busyCap/busyGap 不能为负数")
 	}
@@ -1048,7 +1072,7 @@ func defaultConfig() Config {
 			ReadTimeout:           Duration(15 * time.Minute),
 			RequestTimeout:        Duration(2 * time.Hour),
 		},
-		Gateway:  GatewayConfig{MaxUpstreamRequestBytes: 5 << 19, RequestSlimming: RequestSlimmingConfig{Enabled: true, KeepToolOutputTurns: 2}, AutoCompact: AutoCompactConfig{Enabled: true, ThresholdPercent: 85}, RequestScoped401: RequestScoped401Config{MinBytes: 512 << 10, MinElapsed: Duration(60 * time.Second)}, Affinity: AffinityConfig{BusyCap: 3, BusyGap: 2}},
+		Gateway:  GatewayConfig{MaxUpstreamRequestBytes: 5 << 19, RequestSlimming: RequestSlimmingConfig{Enabled: true, KeepToolOutputTurns: 2}, AutoCompact: AutoCompactConfig{Enabled: true, ThresholdPercent: 85}, RequestScoped401: RequestScoped401Config{MinBytes: 512 << 10, MinElapsed: Duration(60 * time.Second)}, Affinity: AffinityConfig{BusyCap: 3, BusyGap: 2}, RateLimit: RateLimitConfig{MinCooldown: Duration(5 * time.Second), MaxCooldown: Duration(120 * time.Second), DefaultCooldown: Duration(10 * time.Second)}, Queue: QueueConfig{MaxWait: Duration(30 * time.Second), MaxLength: 256}},
 		Frontend: FrontendConfig{PublicAPIBaseURL: DefaultPublicAPIBaseURL, StaticPath: "./frontend/dist"},
 		Database: DatabaseConfig{
 			Driver:   "sqlite",

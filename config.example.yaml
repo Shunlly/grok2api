@@ -48,6 +48,13 @@ gateway:
   affinity:
     busyCap: 3
     busyGap: 2
+  rateLimit:
+    minCooldown: 5s
+    maxCooldown: 120s
+    defaultCooldown: 10s
+  queue:
+    maxWait: 30s
+    maxLength: 256
   requestScoped401:
     minBytes: 524288
     minElapsed: 60s
