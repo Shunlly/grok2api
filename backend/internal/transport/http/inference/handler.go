@@ -2360,6 +2360,10 @@ func writeGatewayError(c *gin.Context, err error) {
 		}
 	case errors.As(err, &selectionFailure):
 		status, code, message = selectionErrorResponse(c, selectionFailure)
+	case errors.Is(err, gateway.ErrModelAccountsUnavailable):
+		status, code = http.StatusServiceUnavailable, "upstream_unavailable"
+		message = "模型已启用，但暂时没有可用的已授权上游账号，请稍后重试"
+		c.Header("Retry-After", "5")
 	case errors.Is(err, gateway.ErrResponseAccountUnavailable), errors.Is(err, gateway.ErrNoAvailableAccount):
 		status, code = http.StatusServiceUnavailable, "upstream_unavailable"
 		message = "当前没有可用的上游账号"

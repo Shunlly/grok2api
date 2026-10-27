@@ -294,7 +294,7 @@ func (s *Service) executeVoice(
 	eventID := newAuditEventID()
 	routes, err := s.models.GetByPublicIDCandidates(ctx, publicModel)
 	if err != nil {
-		return nil, ErrModelNotFound
+		return nil, s.modelLookupError(ctx, publicModel)
 	}
 	route, preselectedSession, err := s.selectSchedulableMediaRoute(ctx, routes, key, capability, consumesQuota, supports)
 	if err != nil {

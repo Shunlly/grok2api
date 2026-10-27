@@ -251,6 +251,18 @@ func (s *Service) GetByPublicIDCandidates(ctx context.Context, publicID string) 
 	return s.models.GetByPublicIDCandidates(ctx, publicID)
 }
 
+// HasEnabledPublicRoute reports whether an enabled route exists even when no
+// account can currently serve it.
+func (s *Service) HasEnabledPublicRoute(ctx context.Context, publicID string) (bool, error) {
+	checker, ok := s.models.(interface {
+		HasEnabledPublicRoute(context.Context, string) (bool, error)
+	})
+	if !ok {
+		return false, nil
+	}
+	return checker.HasEnabledPublicRoute(ctx, publicID)
+}
+
 func (s *Service) GetByProviderUpstream(ctx context.Context, providerValue account.Provider, upstreamModel string) (modeldomain.Route, error) {
 	return s.models.GetByProviderUpstream(ctx, providerValue, upstreamModel)
 }

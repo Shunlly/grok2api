@@ -2,6 +2,11 @@
 
 Shunlly/grok2api fork of [chenyme/grok2api](https://github.com/chenyme/grok2api).
 
+## v3.5.19 — 2026-10-27
+
+### Fixed
+- 所有能服务某模型的账号同时进入「需重新授权」（如 Grok Build OAuth 刷新被拒）时，已启用的模型路由会被路由查询隐藏，请求被误报为 404「模型不存在」，Codex 不会重试。现在会先确认路由是否存在：路由已启用但暂时没有可用账号时返回 503 `upstream_unavailable`（带 `Retry-After: 5`，可重试）；只有真正不存在或未启用的模型才返回 404。覆盖 Responses、Chat、Messages、图片、视频和语音入口。
+
 ## v3.5.18 — 2026-10-26
 
 ### Fixed

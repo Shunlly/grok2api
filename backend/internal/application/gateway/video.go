@@ -124,7 +124,7 @@ func (s *Service) CreateVideo(ctx context.Context, input VideoInput) (media.Job,
 	}
 	routes, err := s.models.GetByPublicIDCandidates(ctx, input.PublicModel)
 	if err != nil {
-		return media.Job{}, ErrModelNotFound
+		return media.Job{}, s.modelLookupError(ctx, input.PublicModel)
 	}
 	routes, err = routesForVideoOperation(routes, operation)
 	if err != nil {

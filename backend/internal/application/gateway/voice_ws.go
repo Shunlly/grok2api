@@ -62,7 +62,7 @@ func (s *Service) OpenVoiceWebSocket(ctx context.Context, input VoiceWebSocketIn
 
 	routes, err := s.models.GetByPublicIDCandidates(ctx, publicModel)
 	if err != nil {
-		return nil, ErrModelNotFound
+		return nil, s.modelLookupError(ctx, publicModel)
 	}
 	supportsVoiceWebSocket := func(providerValue accountdomain.Provider) bool {
 		_, ok := s.providers.VoiceWebSocket(providerValue)
