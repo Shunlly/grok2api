@@ -43,6 +43,11 @@ gateway:
   # 压缩发生在 maxUpstreamRequestBytes 检查之前，审计请求头 X-Grok2api-Context-Compacted、日志 context_compacted。
   # 慢速/大请求 401 归因到请求本身：上游等待 >= minElapsed 才回 401，或请求体 >= minBytes 时，
   # 不标记账号需重新授权、不换账号重试（大请求仍允许刷新一次 token）。设为 0 关闭对应规则。
+  # 会话粘滞分流：粘滞账号在途请求 >= busyCap，或比最空闲账号多 >= busyGap 时，
+  # 本次请求临时借用更空闲的账号（不改原绑定，负载回落后回到原账号）。0 关闭对应规则。
+  affinity:
+    busyCap: 3
+    busyGap: 2
   requestScoped401:
     minBytes: 524288
     minElapsed: 60s

@@ -2,6 +2,14 @@
 
 Shunlly/grok2api fork of [chenyme/grok2api](https://github.com/chenyme/grok2api).
 
+## v3.5.21 — 2026-10-27
+
+### Changed
+- 会话粘滞分流：同一个 Codex 会话固定在一个账号上时，如果这个账号已有 `gateway.affinity.busyCap`（默认 3）个以上在途请求，或比最空闲的账号多出 `busyGap`（默认 2）个，新请求会临时转到最空闲的可用账号。
+  - 原来的粘滞绑定不变，负载降下来后会话回到原账号，继续命中 prompt cache。
+  - 所有其他账号也都达到上限时，仍走原账号（原有 `max_concurrent` 饱和逻辑不变）。
+  - 发生分流时记录 `affinity_spillover` 日志（原账号/目标账号 ID 和在途数）。设为 0 关闭对应规则。
+
 ## v3.5.20 — 2026-10-27
 
 ### Changed

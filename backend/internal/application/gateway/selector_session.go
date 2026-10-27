@@ -240,6 +240,15 @@ func (session *selectionSession) acquireNormal(ctx context.Context, excluded map
 				if candidate.Credential.ID != stickyID {
 					continue
 				}
+				// Busy sticky account: borrow a less loaded account for this request only;
+				// the sticky binding is left untouched so the session returns once load drops.
+				spill, spillErr := session.selector.tryAffinitySpill(ctx, session.values, session.unexcludedNormalIndexes(excluded), stickyID, session.quotaMode, &session.materialFailures)
+				if spillErr != nil {
+					return nil, spillErr
+				}
+				if spill != nil {
+					return spill, nil
+				}
 				lease, err := session.selector.acquirePinnedCapacity(ctx, candidate.Credential, &session.materialFailures)
 				if err != nil {
 					if errors.Is(err, errRoutingCredentialStale) {
