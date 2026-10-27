@@ -37,12 +37,12 @@ import (
 )
 
 var (
-	ErrModelNotFound              = errors.New("模型不存在或未启用")
-	ErrNoAvailableAccount         = errors.New("没有可用上游账号")
+	ErrModelNotFound      = errors.New("模型不存在或未启用")
+	ErrNoAvailableAccount = errors.New("没有可用上游账号")
 	// ErrModelAccountsUnavailable means the public model has an enabled route
 	// but no account can serve it right now (for example every account is
 	// reauthorizing). It is retryable and must not be reported as not found.
-	ErrModelAccountsUnavailable = fmt.Errorf("%w: 模型已启用，但暂时没有可用的已授权账号", ErrNoAvailableAccount)
+	ErrModelAccountsUnavailable   = fmt.Errorf("%w: 模型已启用，但暂时没有可用的已授权账号", ErrNoAvailableAccount)
 	ErrResponseNotFound           = errors.New("Response 不存在或已过期")
 	ErrResponseAccountUnavailable = errors.New("Response 绑定的上游账号不可用")
 	ErrResponseStateUnsupported   = errors.New("目标模型不支持有状态 Response")
@@ -240,6 +240,8 @@ type Service struct {
 	qualityRetry                atomic.Pointer[QualityRetryRuntime]
 	maxUpstreamRequestBytes     atomic.Int64
 	requestScoped401            atomic.Pointer[RequestScoped401Config]
+	rateLimit                   atomic.Pointer[RateLimitConfig]
+	queue                       atomic.Pointer[QueueConfig]
 	verifyCredential            func(context.Context, accountdomain.Credential) (int, error)
 	requestSlimming             requestSlimmingState
 	autoCompact                 autoCompactState
@@ -1308,6 +1310,8 @@ func (s *Service) createResponseAt(ctx context.Context, input Input, path string
 		_ = fallback.response.Body.Close()
 		fallback = nil
 	}
+	var queueDeadline time.Time
+	queuedWaits := 0
 attemptLoop:
 	for attempt := 0; attemptPolicy.allows(attempt); attempt++ {
 		if qualityHoldEnabled && qualityAccountAttempts >= holdCfg.MaxAttempts {
@@ -1343,6 +1347,32 @@ attemptLoop:
 			}
 		}
 		timing.markSelection(time.Since(selectionStarted))
+		if err != nil && ownership == nil && input.ForcedAccountID == 0 && !input.CanaryProbe {
+			queueCfg := s.queueConfig()
+			if queueCfg.MaxWait > 0 {
+				if queueDeadline.IsZero() {
+					queueDeadline = time.Now().Add(queueCfg.MaxWait)
+				}
+				if hint, ok := queueAdmission(err, lastFailure, time.Until(queueDeadline)); ok {
+					retry, waitErr := s.awaitQueue(ctx, queueDeadline, hint, queueCfg.MaxLength)
+					if waitErr != nil {
+						lastErr = waitErr
+						lastFailure = &UpstreamFailure{HTTPStatus: 499, Code: "request_canceled", PublicMessage: "请求已取消", Cause: waitErr}
+						break attemptLoop
+					}
+					if retry {
+						queuedWaits++
+						selection = nil
+						attempt--
+						continue attemptLoop
+					}
+				}
+				if queuedWaits > 0 && isSelectionUnavailable(err, SelectionSaturated) {
+					s.logger.Warn("gateway_queue_timeout", "request_id", input.RequestID, "provider", route.Provider, "model", route.UpstreamModel, "waits", queuedWaits, "queued", QueuedRequests())
+					err = &SelectionUnavailableError{Reason: SelectionSaturated, RetryAfter: queueTimeoutRetryAfter}
+				}
+			}
+		}
 		if err != nil {
 			if lastFailure == nil {
 				lastErr = err
@@ -1628,6 +1658,21 @@ attemptLoop:
 				continue
 			}
 		afterTeamRateLimit:
+			if credential.Provider == accountdomain.ProviderBuild && lease.QuotaMode == "" && isBuildRateLimitFailure(response.StatusCode, lastFailure, body) {
+				cooldown := s.rateLimitConfig().cooldown(retryAfter)
+				if markErr := s.selector.markRateLimitCooldown(ctx, credential, response.StatusCode, cooldown); markErr != nil {
+					s.logger.Warn("upstream_rate_limit_cooldown_failed", "request_id", input.RequestID, "account_id", credential.ID, "error", markErr)
+				}
+				lastFailure.HTTPStatus = http.StatusTooManyRequests
+				lastFailure.Code = "upstream_rate_limited"
+				lastFailure.PublicMessage = "上游请求频率受限"
+				lastFailure.CredentialRejected = false
+				lastFailure.RetryAfter = cooldown
+				lease.Release()
+				lastErr = fmt.Errorf("上游返回 %d（频率受限）", response.StatusCode)
+				s.logger.Warn("upstream_rate_limit_cooldown", "request_id", input.RequestID, "account_id", credential.ID, "provider", credential.Provider, "model", route.UpstreamModel, "status", response.StatusCode, "upstream_code", lastFailure.UpstreamCode, "retry_after", retryAfter, "cooldown", cooldown, "headers", upstreamHeaderLog(response.Header))
+				continue
+			}
 			// Grok Build treats only HTTP 401 as an OAuth authentication failure.
 			// A 403 is already authenticated and must not trigger token rotation or
 			// replay the same request with freshly issued credentials.
@@ -1733,7 +1778,7 @@ attemptLoop:
 			}
 			lease.Release()
 			lastErr = fmt.Errorf("上游返回 %d", response.StatusCode)
-			s.logger.Warn("upstream_request_failed", "request_id", input.RequestID, "account_id", credential.ID, "provider", credential.Provider, "status", response.StatusCode, "upstream_code", lastFailure.UpstreamCode, "account_scoped", lastFailure.AccountScoped)
+			s.logger.Warn("upstream_request_failed", "request_id", input.RequestID, "account_id", credential.ID, "provider", credential.Provider, "status", response.StatusCode, "upstream_code", lastFailure.UpstreamCode, "account_scoped", lastFailure.AccountScoped, "headers", upstreamHeaderLog(response.Header))
 			if shouldStopForNonAccountFingerprint(failureFingerprints, lastFailure) {
 				break
 			}

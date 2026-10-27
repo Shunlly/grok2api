@@ -186,7 +186,7 @@ func newHTTPUpstreamFailure(status int, body []byte, accountID uint64, accountNa
 		// distinct so the gateway can preserve their different recovery scopes.
 		failure.FreeQuotaExhausted = isFreeQuotaExhaustion(metadataText)
 		failure.ModelQuotaExhausted = isModelQuotaExhaustion(metadataText)
-		failure.QuotaExhausted = failure.FreeQuotaExhausted || isPaidQuotaExhaustion(metadataText)
+		failure.QuotaExhausted = failure.FreeQuotaExhausted || isPaidQuotaExhaustion(metadataText) || isUsageExhaustion(metadataText, body)
 	default:
 		if status >= 400 && status < 500 {
 			failure.Code = "upstream_error"
@@ -263,7 +263,7 @@ func isAccountScopedForbidden(text string) bool {
 		"quota", "billing", "subscription", "entitlement",
 		"unauthorized", "authentication", "invalid token", "token expired",
 		"usage-exhausted", "insufficient", "spending-limit", "spending limit",
-		"run out of credits", "out of credits", "usage balance exhausted", "usage limit reached",
+		"run out of credits", "out of credits", "usage balance exhausted", "usage limit reached", "usage_pool_exhausted", "usage_limit_reached",
 	)
 }
 
@@ -312,8 +312,13 @@ func isDefinitiveAccountBlock(text string) bool {
 
 func isCreditQuotaExhaustion(text string) bool {
 	return isPaidQuotaExhaustion(text) || containsAny(text,
-		"run out of credits", "out of credits", "usage balance exhausted", "usage limit reached",
+		"run out of credits", "out of credits", "usage balance exhausted", "usage limit reached", "usage_pool_exhausted", "usage_limit_reached",
 	)
+}
+
+// isUsageExhaustion matches Grok Build's usage_pool_exhausted / usage_limit_reached kinds.
+func isUsageExhaustion(text string, body []byte) bool {
+	return containsAny(text, buildUsageExhaustedCodes...) || bodyHasErrorKind(nil, body, buildUsageExhaustedCodes)
 }
 
 func isPaidQuotaExhaustion(text string) bool {

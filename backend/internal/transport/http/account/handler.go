@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/chenyme/grok2api/backend/internal/application/gateway"
 	"io"
 	"net/http"
 	"strconv"
@@ -2013,5 +2014,5 @@ func (h *Handler) concurrency(c *gin.Context) {
 	for id, value := range overview.Accounts {
 		accounts[strconv.FormatUint(id, 10)] = value
 	}
-	response.Success(c, http.StatusOK, gin.H{"total": overview.Total, "activeAccounts": overview.ActiveAccounts, "accounts": accounts})
+	response.Success(c, http.StatusOK, gin.H{"total": overview.Total, "activeAccounts": overview.ActiveAccounts, "accounts": accounts, "queued": gateway.QueuedRequests()})
 }

@@ -53,7 +53,7 @@ export function DashboardOverview({ dashboard, locale, loading }: DashboardDataP
           icon={Zap}
           label={t("dashboard.currentConcurrency")}
           value={formatNumber(concurrencyQuery.data?.total ?? 0, locale)}
-          detail={t("dashboard.currentConcurrencyDetail", { count: formatNumber(concurrencyQuery.data?.activeAccounts ?? 0, locale) })}
+          detail={(concurrencyQuery.data?.queued ?? 0) > 0 ? t("dashboard.currentConcurrencyQueuedDetail", { count: formatNumber(concurrencyQuery.data?.activeAccounts ?? 0, locale), queued: formatNumber(concurrencyQuery.data?.queued ?? 0, locale) }) : t("dashboard.currentConcurrencyDetail", { count: formatNumber(concurrencyQuery.data?.activeAccounts ?? 0, locale) })}
           loading={concurrencyQuery.isPending}
         />
         <DashboardMetric

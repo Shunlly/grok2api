@@ -3529,8 +3529,8 @@ func TestGatewayGeneric429CoolsAccountAndRotates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cooled.AuthStatus != account.AuthStatusActive || cooled.FailureCount != 1 || cooled.CooldownUntil == nil {
-		t.Fatalf("generic 429 must briefly cool account A without permanent invalidation: %#v", cooled)
+	if cooled.AuthStatus != account.AuthStatusActive || cooled.FailureCount != 0 || cooled.CooldownUntil == nil {
+		t.Fatalf("generic 429 must briefly cool account A without permanent invalidation or durable failure count (v3.5.22 soft rate-limit cooldown): %#v", cooled)
 	}
 }
 

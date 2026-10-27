@@ -241,9 +241,9 @@ type Credential struct {
 	MaxConcurrent       int
 	MinimumRemaining    float64
 	// ContextWindow is the admin-selected Build context window (tokens); 0 = auto (largest the catalog offers).
-	ContextWindow   int
+	ContextWindow int
 	// AllowedModels restricts which upstream models this account may serve; empty = all.
-	AllowedModels []string
+	AllowedModels   []string
 	FailureCount    int
 	CooldownUntil   *time.Time
 	LastError       string
