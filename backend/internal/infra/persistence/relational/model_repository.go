@@ -563,6 +563,21 @@ func (r *ModelRepository) GetByPublicIDCandidates(ctx context.Context, publicID 
 	return mapModelRows(rows), nil
 }
 
+// HasEnabledPublicRoute reports whether an enabled route exists for the public
+// name regardless of current account availability. Gateways use it to tell a
+// truly unknown model apart from one whose accounts are temporarily unusable.
+func (r *ModelRepository) HasEnabledPublicRoute(ctx context.Context, publicID string) (bool, error) {
+	db := r.db.db.WithContext(ctx).Where("enabled = ?", true)
+	rows, err := findModelRoutesByPublicID(db, publicID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return false, nil
+		}
+		return false, mapError(err)
+	}
+	return len(rows) > 0, nil
+}
+
 func (r *ModelRepository) GetByPublicIDIncludingDisabled(ctx context.Context, publicID string) (model.Route, error) {
 	db := r.db.db.WithContext(ctx)
 	rows, err := findModelRoutesByPublicID(db, publicID)

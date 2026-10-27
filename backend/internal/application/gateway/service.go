@@ -39,6 +39,10 @@ import (
 var (
 	ErrModelNotFound              = errors.New("模型不存在或未启用")
 	ErrNoAvailableAccount         = errors.New("没有可用上游账号")
+	// ErrModelAccountsUnavailable means the public model has an enabled route
+	// but no account can serve it right now (for example every account is
+	// reauthorizing). It is retryable and must not be reported as not found.
+	ErrModelAccountsUnavailable = fmt.Errorf("%w: 模型已启用，但暂时没有可用的已授权账号", ErrNoAvailableAccount)
 	ErrResponseNotFound           = errors.New("Response 不存在或已过期")
 	ErrResponseAccountUnavailable = errors.New("Response 绑定的上游账号不可用")
 	ErrResponseStateUnsupported   = errors.New("目标模型不支持有状态 Response")
@@ -558,6 +562,33 @@ func (s *Service) CompactResponse(ctx context.Context, input Input) (*Result, er
 	return s.createResponseAt(ctx, input, "/responses/compact")
 }
 
+// modelLookupError converts a failed route lookup into either ErrModelNotFound
+// or the retryable ErrModelAccountsUnavailable when an enabled route exists but
+// is hidden only because none of its accounts is currently available.
+func (s *Service) modelLookupError(ctx context.Context, publicModel string) error {
+	checker, ok := s.models.(interface {
+		HasEnabledPublicRoute(context.Context, string) (bool, error)
+	})
+	if !ok {
+		return ErrModelNotFound
+	}
+	candidates := []string{publicModel}
+	if s.providers != nil {
+		if alias, aliasOK := s.providers.ResolveModelAlias(publicModel); aliasOK && alias.PublicModel != "" {
+			candidates = append(candidates, alias.PublicModel)
+		}
+	}
+	if base, _, aliasOK := modeldomain.ParseReasoningModelAlias(publicModel); aliasOK {
+		candidates = append(candidates, base)
+	}
+	for _, candidate := range candidates {
+		if exists, err := checker.HasEnabledPublicRoute(ctx, candidate); err == nil && exists {
+			return ErrModelAccountsUnavailable
+		}
+	}
+	return ErrModelNotFound
+}
+
 // resolvePublicModelRoutes supports both unprefixed downstream model names and explicitly sourced compatibility names.
 // Registered Provider aliases are stable compatibility contracts. allowModelAliases gates only dynamically generated
 // reasoning-effort aliases so existing clients keep working after the per-key discovery switch is introduced.
@@ -875,7 +906,7 @@ func (s *Service) createResponseAt(ctx context.Context, input Input, path string
 	}
 	routes, aliasEffort, err := s.resolvePublicModelRoutes(ctx, input.PublicModel, input.ClientKey.AllowModelAliases)
 	if err != nil {
-		return nil, ErrModelNotFound
+		return nil, s.modelLookupError(ctx, input.PublicModel)
 	}
 	// Select an initial route only to preserve the existing stateful/stateless
 	// previous_response_id boundary. The actual target is chosen from the eligible
