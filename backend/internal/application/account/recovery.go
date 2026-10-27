@@ -28,9 +28,12 @@ const (
 	recoveryProbeTimeout   = 90 * time.Second
 	recoveryQualityTimeout = 6 * time.Minute
 	recoveryInitialDelay   = 2 * time.Minute
-	// recoveryMaxAttempts is the attempt cap; with the 10m/30m/2h/6h/24h
+	// recoveryMaxAttempts is the attempt cap; with the 90s/5m/10m/30m/2h/6h/24h
 	// backoff it is reached after roughly five days of failed probes.
-	recoveryMaxAttempts = 9
+	recoveryMaxAttempts = 11
+	// recoveryFastTick wakes the loop between full rounds so short backoffs
+	// (90s, 5m) are honoured; fast ticks only probe due transient reauth rows.
+	recoveryFastTick = time.Minute
 	recoveryQualityHold = 15 * time.Minute
 )
 
@@ -104,26 +107,37 @@ func (s *Service) RunAccountRecovery(ctx context.Context) {
 	}
 	timer := time.NewTimer(recoveryInitialDelay)
 	defer timer.Stop()
+	var lastFull time.Time
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-timer.C:
 		}
-		if err := s.runRecoveryRound(ctx, true); err != nil && ctx.Err() == nil {
+		full := lastFull.IsZero() || time.Since(lastFull) >= s.autoReactivateConfig().Interval
+		if full {
+			lastFull = time.Now()
+		}
+		if err := s.runRecoveryRoundScoped(ctx, true, full); err != nil && ctx.Err() == nil {
 			s.logger.Warn("account_recovery_round_failed", "error", err)
 		}
-		timer.Reset(s.autoReactivateConfig().Interval)
+		timer.Reset(min(recoveryFastTick, s.autoReactivateConfig().Interval))
 	}
 }
 
 func (s *Service) runRecoveryRound(ctx context.Context, jitter bool) error {
+	return s.runRecoveryRoundScoped(ctx, jitter, true)
+}
+
+// runRecoveryRoundScoped probes due candidates; quality-disabled accounts are
+// only included on full rounds so fast ticks never add canary load.
+func (s *Service) runRecoveryRoundScoped(ctx context.Context, jitter, full bool) error {
 	repo, ok := s.recoveryRepo()
 	if !ok {
 		return nil
 	}
 	cfg := s.autoReactivateConfig()
-	includeQuality := cfg.IncludeQualityDisabled && s.qualityRecheck != nil
+	includeQuality := full && cfg.IncludeQualityDisabled && s.qualityRecheck != nil
 	ids, err := repo.ListRecoveryCandidateIDs(ctx, s.now(), includeQuality, recoveryBatchLimit)
 	if err != nil {
 		return err

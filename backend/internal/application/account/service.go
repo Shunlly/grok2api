@@ -4480,6 +4480,21 @@ func (s *Service) loadDetectBilling(ctx context.Context, id uint64) (*accountdom
 	return nil, err
 }
 
+// VerifyBuildCredential sends the tiny detect request with the given (already
+// refreshed) credential and returns the upstream status without changing state.
+func (s *Service) VerifyBuildCredential(ctx context.Context, value accountdomain.Credential) (int, error) {
+	billing, _ := s.loadDetectBilling(ctx, value.ID)
+	response, err := s.forwardBuildDetect(ctx, value, billing)
+	if err != nil {
+		return 0, err
+	}
+	if response.Body != nil {
+		drainDetectBody(response.Body)
+		_ = response.Body.Close()
+	}
+	return response.StatusCode, nil
+}
+
 func (s *Service) forwardBuildDetect(ctx context.Context, value accountdomain.Credential, billing *accountdomain.Billing) (*provider.Response, error) {
 	adapter, ok := s.providers.Responses(accountdomain.ProviderBuild)
 	if !ok {

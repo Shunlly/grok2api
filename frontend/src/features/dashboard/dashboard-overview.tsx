@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Activity, Zap, CircleDollarSign, Gauge, Info, UsersRound, WholeWord, type LucideIcon } from "lucide-react";
+import { Activity, AlertTriangle, Zap, CircleDollarSign, Gauge, Info, UsersRound, WholeWord, type LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Pie, PieChart } from "recharts";
@@ -7,7 +7,8 @@ import { Pie, PieChart } from "recharts";
 import { ChartContainer, type ChartConfig } from "@/components/ui/chart";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { getAccountConcurrency } from "@/features/accounts/accounts-api";
+import { getAccountConcurrency, getAccountSummary } from "@/features/accounts/accounts-api";
+import { buildPoolOutage } from "@/features/dashboard/build-outage";
 import type { DashboardDTO } from "@/features/dashboard/dashboard-api";
 import { formatUSD, formatUSDValue } from "@/features/dashboard/dashboard-format";
 import { DashboardPanel } from "@/features/dashboard/dashboard-panel";
@@ -26,6 +27,8 @@ export function DashboardOverview({ dashboard, locale, loading }: DashboardDataP
   const resources = dashboard?.resources;
   const usage = dashboard?.usage;
   const concurrencyQuery = useQuery({ queryKey: ["accounts", "concurrency"], queryFn: getAccountConcurrency, refetchInterval: 5_000 });
+  const summaryQuery = useQuery({ queryKey: ["accounts", "summary"], queryFn: getAccountSummary, refetchInterval: 15_000 });
+  const buildOutage = buildPoolOutage(summaryQuery.data);
   const cacheHitRate = (usage?.inputTokens ?? 0) > 0 ? (usage?.cachedInputTokens ?? 0) / (usage?.inputTokens ?? 1) * 100 : 0;
   const averageRequestCost = (usage?.requests ?? 0) > 0 ? usdTicksToValue(usage?.billedCostUsdTicks ?? 0) / (usage?.requests ?? 1) : 0;
   const hasFirstTokenSamples = (usage?.firstTokenSamples ?? 0) > 0;
@@ -36,6 +39,15 @@ export function DashboardOverview({ dashboard, locale, loading }: DashboardDataP
 
   return (
     <section aria-label={t("dashboard.usage")}>
+      {buildOutage ? (
+        <div role="alert" className="mb-2 flex items-start gap-2 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
+          <div className="min-w-0">
+            <p className="font-medium">{t("dashboard.buildOutageTitle")}</p>
+            <p className="break-words text-xs opacity-90">{t("dashboard.buildOutageDetail", { total: formatNumber(buildOutage.total, locale) })}</p>
+          </div>
+        </div>
+      ) : null}
       <div className="grid grid-cols-2 gap-2 xl:grid-cols-6">
         <DashboardMetric
           icon={Zap}

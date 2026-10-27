@@ -41,6 +41,11 @@ gateway:
   # （工具调用 / 输出成对保留，最近部分不超过窗口的 keepRecentPercent%）。上下文窗口取上游模型目录，缺省 256000。
   # 摘要按已压缩前缀的哈希缓存（内存 LRU），Codex 每轮重发全量历史时直接复用；摘要失败时退化为丢弃最早记录并加占位。
   # 压缩发生在 maxUpstreamRequestBytes 检查之前，审计请求头 X-Grok2api-Context-Compacted、日志 context_compacted。
+  # 慢速/大请求 401 归因到请求本身：上游等待 >= minElapsed 才回 401，或请求体 >= minBytes 时，
+  # 不标记账号需重新授权、不换账号重试（大请求仍允许刷新一次 token）。设为 0 关闭对应规则。
+  requestScoped401:
+    minBytes: 524288
+    minElapsed: 60s
   autoCompact:
     enabled: true
     thresholdPercent: 85

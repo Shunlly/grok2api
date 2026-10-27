@@ -156,8 +156,10 @@ func ClassifyReauthReason(reason string, refreshPermanent bool) ReauthKind {
 	return ReauthKindTransient
 }
 
-// RecoveryBackoffSchedule is the delay before recovery attempt N+1 (10m, 30m, 2h, 6h, 24h, then 24h).
-var RecoveryBackoffSchedule = [...]time.Duration{10 * time.Minute, 30 * time.Minute, 2 * time.Hour, 6 * time.Hour, 24 * time.Hour}
+// RecoveryBackoffSchedule is the delay before recovery attempt N+1
+// (90s, 5m, 10m, 30m, 2h, 6h, 24h, then 24h). The short first steps let a
+// transient reauth mark recover within minutes.
+var RecoveryBackoffSchedule = [...]time.Duration{90 * time.Second, 5 * time.Minute, 10 * time.Minute, 30 * time.Minute, 2 * time.Hour, 6 * time.Hour, 24 * time.Hour}
 
 // RecoveryBackoff returns the wait after `attempts` failed recovery probes.
 func RecoveryBackoff(attempts int) time.Duration {

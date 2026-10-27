@@ -239,6 +239,8 @@ type Service struct {
 	markBuildChatDeniedAsReauth atomic.Bool
 	qualityRetry                atomic.Pointer[QualityRetryRuntime]
 	maxUpstreamRequestBytes     atomic.Int64
+	requestScoped401            atomic.Pointer[RequestScoped401Config]
+	verifyCredential            func(context.Context, accountdomain.Credential) (int, error)
 	requestSlimming             requestSlimmingState
 	autoCompact                 autoCompactState
 }
@@ -1044,6 +1046,29 @@ func (s *Service) createResponseAt(ctx context.Context, input Input, path string
 		return nil, tooLarge
 	}
 	largeRequest := len(input.Body) >= largeRequestHealthExemptBytes
+	// Accounts whose credential was confirmed rejected (refresh + retry + tiny
+	// verification all 401). Marking is deferred so one bad request that 401s
+	// on every account it tries does not take the whole pool offline.
+	var pendingReauth []accountdomain.Credential
+	flushPendingReauth := func(succeeded bool, triedAccounts int) {
+		if len(pendingReauth) == 0 {
+			return
+		}
+		if !succeeded && shouldSkipPendingReauth(len(pendingReauth), triedAccounts) {
+			ids := make([]uint64, 0, len(pendingReauth))
+			for _, value := range pendingReauth {
+				ids = append(ids, value.ID)
+			}
+			s.logger.Warn("upstream_unauthorized_all_accounts_skipped", "request_id", input.RequestID, "accounts", ids)
+			pendingReauth = nil
+			return
+		}
+		for _, value := range pendingReauth {
+			_ = s.accounts.MarkReauthRequired(context.WithoutCancel(ctx), value.ID, "Grok Build OAuth credential rejected after refresh")
+			s.selector.MarkQuotaStateChanged(value.Provider, value.ID)
+		}
+		pendingReauth = nil
+	}
 	affinityKey := ""
 	ownershipPromptCacheKey := ""
 	reasoningReplayKey := ""
@@ -1429,17 +1454,18 @@ attemptLoop:
 		if response.ModelCatalogChanged {
 			s.queueAccountModelSync(credential.ID)
 		}
-		if response.StatusCode == http.StatusUnauthorized && isSlowLargeRequestFailure(largeRequest, responseStartedAt) {
-			// A 401 that only arrives after minutes of uploading a huge body is an
-			// upstream/edge artifact, not proof the credential is bad. Return it
-			// without reauth, refresh, cooldown, or failover.
+		if response.StatusCode == http.StatusUnauthorized && s.immediateRequestScoped401(len(input.Body), responseStartedAt) {
+			// A 401 that only arrives after a long upstream wait (or slowly on a
+			// large body) is an upstream/edge artifact of this request, not proof
+			// the credential is bad. Return it without reauth, refresh, cooldown,
+			// or failover.
 			body, _ := readRetryableBody(response.Body)
 			lease.completeSelectorObservation(false)
 			lease.Release()
-			lastErr = fmt.Errorf("大请求慢速返回 401，跳过凭据失效处理")
+			lastErr = fmt.Errorf("慢速返回 401，按请求问题处理，跳过凭据失效处理")
 			_ = body
-			lastFailure = newLargeRequestUpstreamFailure(len(input.Body), credential.ID, credential.Name, http.StatusUnauthorized)
-			s.logger.Warn("upstream_slow_large_unauthorized_ignored", "request_id", input.RequestID, "account_id", credential.ID, "bytes", len(input.Body), "elapsed", time.Since(responseStartedAt))
+			lastFailure = s.newRequestScoped401Failure(len(input.Body), credential.ID, credential.Name, false)
+			s.logger.Warn("upstream_request_scoped_unauthorized", "request_id", input.RequestID, "account_id", credential.ID, "bytes", len(input.Body), "elapsed", time.Since(responseStartedAt), "stage", "primary")
 			break attemptLoop
 		}
 		if response.StatusCode == http.StatusUnauthorized {
@@ -1488,20 +1514,37 @@ attemptLoop:
 				}
 				continue
 			}
-			if response.StatusCode == http.StatusUnauthorized && isSlowLargeRequestFailure(largeRequest, responseStartedAt) {
+			if response.StatusCode == http.StatusUnauthorized && (s.largeFor401(len(input.Body)) || s.immediateRequestScoped401(len(input.Body), responseStartedAt)) {
+				// Large bodies may still refresh once (an expired token is cheap
+				// to fix), but a repeated 401 never marks or fans out the request.
 				body, _ := readRetryableBody(response.Body)
 				lease.Release()
-				lastErr = fmt.Errorf("大请求慢速返回 401，跳过凭据失效处理")
+				lastErr = fmt.Errorf("刷新后仍 401，按请求问题处理，跳过凭据失效处理")
 				_ = body
-				lastFailure = newLargeRequestUpstreamFailure(len(input.Body), credential.ID, credential.Name, http.StatusUnauthorized)
-				s.logger.Warn("upstream_slow_large_unauthorized_ignored", "request_id", input.RequestID, "account_id", credential.ID, "bytes", len(input.Body), "after_refresh", true)
+				lastFailure = s.newRequestScoped401Failure(len(input.Body), credential.ID, credential.Name, false)
+				s.logger.Warn("upstream_request_scoped_unauthorized", "request_id", input.RequestID, "account_id", credential.ID, "bytes", len(input.Body), "elapsed", time.Since(responseStartedAt), "stage", "after_refresh")
 				break attemptLoop
 			}
 			if response.StatusCode == http.StatusUnauthorized {
 				body, _ := readRetryableBody(response.Body)
-				_ = s.accounts.MarkReauthRequired(ctx, credential.ID, "Grok Build OAuth credential rejected after refresh")
-				s.selector.MarkQuotaStateChanged(credential.Provider, credential.ID)
 				lease.Release()
+				// Confirm with a tiny request before blaming the account: if the
+				// account still works, the 401 belongs to this request.
+				verifyStatus, verifyErr := http.StatusUnauthorized, error(nil)
+				if credential.Provider == accountdomain.ProviderBuild {
+					verifyStatus, verifyErr = s.verifyAccountCredential(ctx, credential)
+				}
+				if verifyErr == nil && verifyStatus >= 200 && verifyStatus < 300 {
+					lastErr = fmt.Errorf("刷新后仍 401，但账号验证通过，按请求问题处理")
+					lastFailure = s.newRequestScoped401Failure(len(input.Body), credential.ID, credential.Name, true)
+					s.logger.Warn("upstream_request_scoped_unauthorized", "request_id", input.RequestID, "account_id", credential.ID, "bytes", len(input.Body), "stage", "verified_account_ok")
+					break attemptLoop
+				}
+				if verifyErr == nil && verifyStatus == http.StatusUnauthorized {
+					pendingReauth = append(pendingReauth, credential)
+				} else {
+					s.logger.Warn("account_verify_inconclusive", "request_id", input.RequestID, "account_id", credential.ID, "status", verifyStatus, "error", verifyErr)
+				}
 				lastErr = fmt.Errorf("刷新后上游仍返回 401")
 				lastFailure = newHTTPUpstreamFailure(http.StatusUnauthorized, body, credential.ID, credential.Name)
 				continue
@@ -1810,8 +1853,10 @@ attemptLoop:
 			selected := fallback
 			fallback = nil
 			s.logger.Info("quality_degraded_fallback", "request_id", input.RequestID, "account_id", selected.credential.ID, "quality_attempts", qualityAccountAttempts)
+			flushPendingReauth(true, len(excluded))
 			return handoffResponse(selected.response, selected.lease, selected.credential, selected.upstreamStartedAt), nil
 		}
+		flushPendingReauth(true, len(excluded))
 		return handoffResponse(response, lease, credential, responseStartedAt), nil
 	}
 	if fallback != nil {
@@ -1819,10 +1864,12 @@ attemptLoop:
 			selected := fallback
 			fallback = nil
 			s.logger.Info("quality_degraded_fallback", "request_id", input.RequestID, "account_id", selected.credential.ID, "quality_attempts", qualityAccountAttempts)
+			flushPendingReauth(true, len(excluded))
 			return handoffResponse(selected.response, selected.lease, selected.credential, selected.upstreamStartedAt), nil
 		}
 		discardFallback(true)
 	}
+	flushPendingReauth(false, len(excluded))
 	if lastFailure != nil {
 		record := auditBase
 		record.StatusCode = lastFailure.HTTPStatus
@@ -2328,4 +2375,24 @@ func firstError(values ...error) error {
 		}
 	}
 	return errors.New("未知上游错误")
+}
+
+// shouldSkipPendingReauth: when every account a failed request tried was
+// "confirmed" rejected, the request itself is the likely cause, so none is marked.
+func shouldSkipPendingReauth(pending, tried int) bool {
+	return pending >= 2 && pending >= tried
+}
+
+// verifyAccountCredential sends a tiny request with the account's current
+// credential. It returns the upstream HTTP status (0 when unavailable).
+func (s *Service) verifyAccountCredential(ctx context.Context, credential accountdomain.Credential) (int, error) {
+	verifyCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+	defer cancel()
+	if s.verifyCredential != nil {
+		return s.verifyCredential(verifyCtx, credential)
+	}
+	if s.accounts == nil || credential.Provider != accountdomain.ProviderBuild {
+		return 0, fmt.Errorf("账号验证不可用")
+	}
+	return s.accounts.VerifyBuildCredential(verifyCtx, credential)
 }
