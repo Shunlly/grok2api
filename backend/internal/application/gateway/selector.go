@@ -361,6 +361,8 @@ type Selector struct {
 	quotaMu                sync.RWMutex
 	staleLogMu             sync.Mutex
 	logger                 *slog.Logger
+	affinityBusyCap        int
+	affinityBusyGap        int
 	leaseWakeMu            sync.Mutex
 	leaseWake              chan struct{}
 	lastSelectedAt         map[uint64]time.Time
@@ -390,7 +392,7 @@ func NewSelector(accounts repository.AccountRepository, concurrency repository.C
 	if len(capacityWait) > 0 && capacityWait[0] > 0 {
 		wait = capacityWait[0]
 	}
-	return &Selector{accounts: accounts, concurrency: concurrency, sticky: sticky, tierOrders: tierOrders, stickyTTL: stickyTTL, cooldownBase: cooldownBase, cooldownMax: cooldownMax, capacityWait: wait, leaseWake: make(chan struct{}), logger: slog.Default(), lastSelectedAt: make(map[uint64]time.Time), lastSuccessAt: make(map[uint64]time.Time), healthOverrides: make(map[uint64]routingHealthOverride), quotaConsumed: make(map[quotaConsumptionKey]int), staleFallbackLoggedAt: make(map[string]time.Time), candidates: make(map[candidateCacheKey]candidateSnapshot), routingBases: make(map[routingBaseCacheKey]routingBaseSnapshot), routingOverlays: make(map[routingOverlayCacheKey]routingOverlaySnapshot), routingAccountProvider: make(map[uint64]account.Provider), baseProviderVersion: make(map[account.Provider]uint64), overlayProviderVersion: make(map[account.Provider]uint64), concurrencySnapshots: resultcache.New[[32]byte, map[string]int](maxConcurrencySnapshots, concurrencySnapshotTTL)}
+	return &Selector{accounts: accounts, concurrency: concurrency, sticky: sticky, tierOrders: tierOrders, stickyTTL: stickyTTL, cooldownBase: cooldownBase, cooldownMax: cooldownMax, capacityWait: wait, leaseWake: make(chan struct{}), logger: slog.Default(), lastSelectedAt: make(map[uint64]time.Time), lastSuccessAt: make(map[uint64]time.Time), healthOverrides: make(map[uint64]routingHealthOverride), quotaConsumed: make(map[quotaConsumptionKey]int), staleFallbackLoggedAt: make(map[string]time.Time), candidates: make(map[candidateCacheKey]candidateSnapshot), routingBases: make(map[routingBaseCacheKey]routingBaseSnapshot), routingOverlays: make(map[routingOverlayCacheKey]routingOverlaySnapshot), routingAccountProvider: make(map[uint64]account.Provider), baseProviderVersion: make(map[account.Provider]uint64), overlayProviderVersion: make(map[account.Provider]uint64), concurrencySnapshots: resultcache.New[[32]byte, map[string]int](maxConcurrencySnapshots, concurrencySnapshotTTL), affinityBusyCap: DefaultAffinityBusyCap, affinityBusyGap: DefaultAffinityBusyGap}
 }
 
 // SetLogger wires the application logger into routing degradation diagnostics.
@@ -676,6 +678,15 @@ func (s *Selector) acquire(ctx context.Context, provider account.Provider, model
 					stickyID = boundID
 				}
 				if eligible {
+					// 粘性账号在途请求过多时，本次请求临时借用更空闲的账号；不改原绑定，
+					// 负载回落后会话回到原账号继续命中 prompt cache。
+					spill, spillErr := s.tryAffinitySpill(ctx, values, normalCandidates, stickyID, quotaMode, &materialFailures)
+					if spillErr != nil {
+						return nil, spillErr
+					}
+					if spill != nil {
+						return spill, nil
+					}
 					lease, acquireErr := s.acquirePinnedCapacity(ctx, candidate.Credential, &materialFailures)
 					if acquireErr == nil {
 						lease.Billing = candidate.Billing

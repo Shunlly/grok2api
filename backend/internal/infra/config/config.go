@@ -99,6 +99,16 @@ type GatewayConfig struct {
 	// RequestScoped401 attributes slow or large-body 401s to the request instead
 	// of the account (no reauth mark, no account switch).
 	RequestScoped401 RequestScoped401Config `yaml:"requestScoped401"`
+	// Affinity lets busy sticky sessions borrow a less loaded account per request.
+	Affinity AffinityConfig `yaml:"affinity"`
+}
+
+// AffinityConfig: a sticky request spills to another account when the sticky
+// account has >= busyCap in-flight requests, or busyGap more than the least
+// loaded alternative. 0 disables each rule; the binding itself is kept.
+type AffinityConfig struct {
+	BusyCap int `yaml:"busyCap"`
+	BusyGap int `yaml:"busyGap"`
 }
 
 // RequestScoped401Config: minBytes 0 / minElapsed 0 disable each rule.
@@ -571,6 +581,9 @@ func (c Config) Validate() error {
 	if c.Gateway.AutoCompact.ThresholdPercent < 0 || c.Gateway.AutoCompact.ThresholdPercent > 100 {
 		return fmt.Errorf("gateway.autoCompact.thresholdPercent 必须在 0-100 之间")
 	}
+	if c.Gateway.Affinity.BusyCap < 0 || c.Gateway.Affinity.BusyGap < 0 {
+		return errors.New("gateway.affinity.busyCap/busyGap 不能为负数")
+	}
 	if c.Gateway.RequestScoped401.MinBytes < 0 || c.Gateway.RequestScoped401.MinElapsed < 0 {
 		return fmt.Errorf("gateway.requestScoped401 不能为负数")
 	}
@@ -1035,7 +1048,7 @@ func defaultConfig() Config {
 			ReadTimeout:           Duration(15 * time.Minute),
 			RequestTimeout:        Duration(2 * time.Hour),
 		},
-		Gateway:  GatewayConfig{MaxUpstreamRequestBytes: 5 << 19, RequestSlimming: RequestSlimmingConfig{Enabled: true, KeepToolOutputTurns: 2}, AutoCompact: AutoCompactConfig{Enabled: true, ThresholdPercent: 85}, RequestScoped401: RequestScoped401Config{MinBytes: 512 << 10, MinElapsed: Duration(60 * time.Second)}},
+		Gateway:  GatewayConfig{MaxUpstreamRequestBytes: 5 << 19, RequestSlimming: RequestSlimmingConfig{Enabled: true, KeepToolOutputTurns: 2}, AutoCompact: AutoCompactConfig{Enabled: true, ThresholdPercent: 85}, RequestScoped401: RequestScoped401Config{MinBytes: 512 << 10, MinElapsed: Duration(60 * time.Second)}, Affinity: AffinityConfig{BusyCap: 3, BusyGap: 2}},
 		Frontend: FrontendConfig{PublicAPIBaseURL: DefaultPublicAPIBaseURL, StaticPath: "./frontend/dist"},
 		Database: DatabaseConfig{
 			Driver:   "sqlite",
