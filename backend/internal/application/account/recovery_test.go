@@ -59,7 +59,7 @@ func TestClassifyReauthReason(t *testing.T) {
 }
 
 func TestRecoveryBackoffSchedule(t *testing.T) {
-	want := []time.Duration{10 * time.Minute, 30 * time.Minute, 2 * time.Hour, 6 * time.Hour, 24 * time.Hour, 24 * time.Hour}
+	want := []time.Duration{90 * time.Second, 5 * time.Minute, 10 * time.Minute, 30 * time.Minute, 2 * time.Hour, 6 * time.Hour, 24 * time.Hour, 24 * time.Hour}
 	for attempts, expected := range want {
 		if got := accountdomain.RecoveryBackoff(attempts); got != expected {
 			t.Fatalf("attempt %d => %s, want %s", attempts, got, expected)
@@ -80,7 +80,7 @@ func TestMarkReauthRequiredTagsKind(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := mustGet(t, repo, transient.ID)
-	if got.ReauthKind != accountdomain.ReauthKindTransient || got.RecoveryNextCheckAt == nil || !got.RecoveryNextCheckAt.Equal(now.Add(10*time.Minute)) {
+	if got.ReauthKind != accountdomain.ReauthKindTransient || got.RecoveryNextCheckAt == nil || !got.RecoveryNextCheckAt.Equal(now.Add(90*time.Second)) {
 		t.Fatalf("transient = %+v", got)
 	}
 	got = mustGet(t, repo, banned.ID)
@@ -117,7 +117,7 @@ func TestRecoveryRoundReactivatesTransientOnly(t *testing.T) {
 	if _, err := service.BatchUpdate(ctx, accountdomain.ProviderBuild, []uint64{adminOff.ID}, UpdateInput{Enabled: &disabled}); err != nil {
 		t.Fatal(err)
 	}
-	service.now = func() time.Time { return now.Add(5 * time.Minute) }
+	service.now = func() time.Time { return now.Add(10 * time.Minute) }
 	if err := service.MarkReauthRequired(ctx, notDue.ID, "credential rejected"); err != nil {
 		t.Fatal(err)
 	}
@@ -308,5 +308,22 @@ func TestQualityRecoveryRequiresOptInAndCanaryPass(t *testing.T) {
 	got = mustGet(t, repo, value.ID)
 	if calls != 2 || !got.Enabled || got.DisabledSource != "" || got.CooldownUntil != nil || got.RecoveryAttempts != 0 {
 		t.Fatalf("passed quality probe state = %+v", got)
+	}
+}
+
+func TestFastRecoveryTickSkipsQualityCandidates(t *testing.T) {
+	now := time.Date(2026, 10, 14, 0, 0, 0, 0, time.UTC)
+	service, repo, probed := newRecoveryTestService(t, now)
+	ctx := context.Background()
+	transient := recoveryAccount(t, repo, "transient-fast")
+	if err := service.MarkReauthRequired(ctx, transient.ID, "credential rejected"); err != nil {
+		t.Fatal(err)
+	}
+	service.now = func() time.Time { return now.Add(2 * time.Minute) }
+	if err := service.runRecoveryRoundScoped(ctx, false, false); err != nil {
+		t.Fatal(err)
+	}
+	if len(*probed) != 1 || (*probed)[0] != transient.ID {
+		t.Fatalf("fast tick should probe the due transient account within 2 minutes, probed = %v", *probed)
 	}
 }

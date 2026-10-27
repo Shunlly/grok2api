@@ -96,6 +96,15 @@ type GatewayConfig struct {
 	// AutoCompact summarizes older history (Grok Build style) when the
 	// estimated input exceeds thresholdPercent of the model context window.
 	AutoCompact AutoCompactConfig `yaml:"autoCompact"`
+	// RequestScoped401 attributes slow or large-body 401s to the request instead
+	// of the account (no reauth mark, no account switch).
+	RequestScoped401 RequestScoped401Config `yaml:"requestScoped401"`
+}
+
+// RequestScoped401Config: minBytes 0 / minElapsed 0 disable each rule.
+type RequestScoped401Config struct {
+	MinBytes   int64    `yaml:"minBytes"`
+	MinElapsed Duration `yaml:"minElapsed"`
 }
 
 // AutoCompactConfig controls Grok Build-style gateway-side context compaction.
@@ -562,6 +571,9 @@ func (c Config) Validate() error {
 	if c.Gateway.AutoCompact.ThresholdPercent < 0 || c.Gateway.AutoCompact.ThresholdPercent > 100 {
 		return fmt.Errorf("gateway.autoCompact.thresholdPercent 必须在 0-100 之间")
 	}
+	if c.Gateway.RequestScoped401.MinBytes < 0 || c.Gateway.RequestScoped401.MinElapsed < 0 {
+		return fmt.Errorf("gateway.requestScoped401 不能为负数")
+	}
 	if c.Gateway.MaxUpstreamRequestBytes < 0 {
 		return fmt.Errorf("gateway.maxUpstreamRequestBytes 不能为负数")
 	}
@@ -1023,7 +1035,7 @@ func defaultConfig() Config {
 			ReadTimeout:           Duration(15 * time.Minute),
 			RequestTimeout:        Duration(2 * time.Hour),
 		},
-		Gateway:  GatewayConfig{MaxUpstreamRequestBytes: 5 << 19, RequestSlimming: RequestSlimmingConfig{Enabled: true, KeepToolOutputTurns: 2}, AutoCompact: AutoCompactConfig{Enabled: true, ThresholdPercent: 85}},
+		Gateway:  GatewayConfig{MaxUpstreamRequestBytes: 5 << 19, RequestSlimming: RequestSlimmingConfig{Enabled: true, KeepToolOutputTurns: 2}, AutoCompact: AutoCompactConfig{Enabled: true, ThresholdPercent: 85}, RequestScoped401: RequestScoped401Config{MinBytes: 512 << 10, MinElapsed: Duration(60 * time.Second)}},
 		Frontend: FrontendConfig{PublicAPIBaseURL: DefaultPublicAPIBaseURL, StaticPath: "./frontend/dist"},
 		Database: DatabaseConfig{
 			Driver:   "sqlite",
