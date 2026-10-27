@@ -1631,16 +1631,7 @@ func (f *internalSSEMarkerFilter) Filter(chunk []byte, final bool) []byte {
 			f.pending = nil
 			return result
 		}
-		keep := 0
-		for _, marker := range internalSSEMarkers {
-			limit := min(len(f.pending), len(marker)-1)
-			for size := limit; size > keep; size-- {
-				if bytes.Equal(f.pending[len(f.pending)-size:], marker[:size]) {
-					keep = size
-					break
-				}
-			}
-		}
+		keep := partialInternalSSEMarker(f.pending)
 		result = append(result, f.pending[:len(f.pending)-keep]...)
 		f.pending = f.pending[len(f.pending)-keep:]
 		return result
@@ -1650,14 +1641,41 @@ func (f *internalSSEMarkerFilter) Filter(chunk []byte, final bool) []byte {
 func nextInternalSSEMarker(value []byte) (int, int) {
 	index := -1
 	length := 0
-	for _, marker := range internalSSEMarkers {
-		candidate := bytes.Index(value, marker)
-		if candidate >= 0 && (index < 0 || candidate < index) {
+	for _, prefix := range internalSSEMarkerPrefixes {
+		candidate := bytes.Index(value, prefix)
+		if candidate < 0 {
+			continue
+		}
+		end := bytes.Index(value[candidate:], []byte("\n\n"))
+		if end < 0 {
+			continue
+		}
+		if index < 0 || candidate < index {
 			index = candidate
-			length = len(marker)
+			length = end + 2
 		}
 	}
 	return index, length
+}
+
+func partialInternalSSEMarker(value []byte) int {
+	keep := 0
+	for _, prefix := range internalSSEMarkerPrefixes {
+		if idx := bytes.Index(value, prefix); idx >= 0 {
+			if size := len(value) - idx; size > keep {
+				keep = size
+			}
+			continue
+		}
+		limit := min(len(value), len(prefix)-1)
+		for size := limit; size > keep; size-- {
+			if bytes.Equal(value[len(value)-size:], prefix[:size]) {
+				keep = size
+				break
+			}
+		}
+	}
+	return keep
 }
 
 func copyJSON(writer gin.ResponseWriter, source io.Reader, protocol streamProtocol) (responseMetadata, error) {
@@ -1719,9 +1737,9 @@ const (
 	reasoningEvidenceSSEComment = ": grok2api-reasoning-evidence"
 )
 
-var internalSSEMarkers = [][]byte{
-	[]byte(reasoningStartSSEComment + "\n\n"),
-	[]byte(reasoningEvidenceSSEComment + "\n\n"),
+var internalSSEMarkerPrefixes = [][]byte{
+	[]byte(reasoningStartSSEComment),
+	[]byte(reasoningEvidenceSSEComment),
 }
 
 func (i *responseInspector) Inspect(chunk []byte) {

@@ -2,6 +2,11 @@
 
 Shunlly/grok2api fork of [chenyme/grok2api](https://github.com/chenyme/grok2api).
 
+## v3.5.23 — 2026-10-27
+
+### Fixed
+- 流式响应中带字节数的内部 SSE 注释 `: grok2api-reasoning-evidence <n>` 会漏给 Chat / Anthropic 客户端（上游 #1084）。现在按行前缀匹配 `: grok2api-reasoning-start` / `: grok2api-reasoning-evidence`，一直剥到 `\n\n`，跨 chunk 也能正确处理（移植上游 PR #1096）。
+
 ## v3.5.22 — 2026-10-27
 
 ### Changed
