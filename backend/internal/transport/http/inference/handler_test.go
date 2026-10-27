@@ -963,7 +963,7 @@ func TestStreamInspectorMarksChatReasoningComment(t *testing.T) {
 }
 
 func TestInternalSSEMarkerFilterAcrossChunkBoundaries(t *testing.T) {
-	markers := reasoningStartSSEComment + "\n\n" + reasoningEvidenceSSEComment + "\n\n"
+	markers := reasoningStartSSEComment + "\n\n" + reasoningEvidenceSSEComment + " 9\n\n"
 	input := []byte("data: before\n\n" + markers + "data: after\n\n")
 	want := "data: before\n\ndata: after\n\n"
 	for split := 0; split <= len(input); split++ {
@@ -984,7 +984,7 @@ func TestCopyStreamConsumesInternalReasoningMarker(t *testing.T) {
 	context, _ := gin.CreateTestContext(recorder)
 	body := `data: {"choices":[{"delta":{"role":"assistant"}}]}` + "\n\n" +
 		": grok2api-reasoning-start\n\n" +
-		": grok2api-reasoning-evidence\n\n" +
+		": grok2api-reasoning-evidence 9\n\n" +
 		`data: {"choices":[{"delta":{"content":"hello"}}]}` + "\n\n" +
 		"data: [DONE]\n\n"
 	marked := 0
