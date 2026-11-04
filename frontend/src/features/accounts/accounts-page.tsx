@@ -74,7 +74,7 @@ import { getAccountConcurrency,
   syncWebAccountsToConsole,
   updateAccount,
   updateAccountsEnabled,
-  updateAccountsMaxConcurrent,
+  updateAccountsMaxConcurrent, updateAccountsPriority,
   type AccountDTO,
   type AccountCleanupStatus,
   type AccountProvider,
@@ -160,6 +160,8 @@ export function AccountsPage() {
   const [batchDeleteOpen, setBatchDeleteOpen] = useState(false);
   const [batchConcurrencyOpen, setBatchConcurrencyOpen] = useState(false);
   const [batchMaxConcurrent, setBatchMaxConcurrent] = useState("1");
+  const [batchPriorityOpen, setBatchPriorityOpen] = useState(false);
+  const [batchPriority, setBatchPriority] = useState("1");
   const [batchQuotaTaskOpen, setBatchQuotaTaskOpen] = useState(false);
   const [batchQuotaTask, setBatchQuotaTask] = useState<BuildQuotaTask>("sync");
   const [egressConfigurationOpen, setEgressConfigurationOpen] = useState(false);
@@ -804,6 +806,17 @@ export function AccountsPage() {
       clearSelection();
       invalidateAccountData();
       toast.success(t("accounts.batchConcurrencyUpdated"));
+    },
+    onError: showError,
+  });
+
+  const batchPriorityMutation = useMutation({
+    mutationFn: (priority: number) => updateAccountsPriority([...selected], priority, provider),
+    onSuccess: () => {
+      setBatchPriorityOpen(false);
+      clearSelection();
+      invalidateAccountData();
+      toast.success(t("accounts.batchPriorityUpdated"));
     },
     onError: showError,
   });
@@ -1550,6 +1563,10 @@ export function AccountsPage() {
                   setBatchConcurrencyOpen(true);
                 }}>{t("accounts.batchSetConcurrency")}</Button>
                 <Button variant="secondary" size="sm" disabled={bulkTaskPending} onClick={() => {
+                  setBatchPriority("1");
+                  setBatchPriorityOpen(true);
+                }}>{t("accounts.batchSetPriority")}</Button>
+                <Button variant="secondary" size="sm" disabled={bulkTaskPending} onClick={() => {
                   setEgressNodeID("");
                   setEgressConfigurationTask("bind");
                   setEgressConfigurationOpen(true);
@@ -1590,9 +1607,10 @@ export function AccountsPage() {
           <Table viewportRows={20} rowHeight={56} className="table-fixed border-collapse min-w-[780px] xl:min-w-[960px] 2xl:min-w-[1080px]">
             <colgroup>
               <col style={{ width: "3%" }} />
-              <col style={{ width: "18%" }} />
+              <col style={{ width: "13%" }} />
               <col style={{ width: "7%" }} />
               <col style={{ width: "7%" }} />
+              <col style={{ width: "5%" }} />
               <col style={{ width: "6%" }} />
               <col style={{ width: provider === "grok_build" ? "21%" : "37%" }} />
               {provider === "grok_build" ? <col style={{ width: "16%" }} /> : null}
@@ -1605,6 +1623,7 @@ export function AccountsPage() {
                 <SortableTableHead field="name" sortBy={sort.field} sortOrder={sort.order} onSort={changeSort}>{t("accounts.account")}</SortableTableHead>
                 <SortableTableHead field="type" sortBy={sort.field} sortOrder={sort.order} align="center" onSort={changeSort} className="whitespace-nowrap">{t("accountType.label")}</SortableTableHead>
                 <SortableTableHead field="status" sortBy={sort.field} sortOrder={sort.order} align="center" onSort={changeSort} className="whitespace-nowrap">{t("accounts.status")}</SortableTableHead>
+                <SortableTableHead field="priority" sortBy={sort.field} sortOrder={sort.order} align="center" initialOrder="desc" onSort={changeSort} className="whitespace-nowrap">{t("accounts.priority")}</SortableTableHead>
                 <TableHead className="whitespace-nowrap text-center">{t("accounts.currentConcurrency")}</TableHead>
                 <TableHead className={cn("whitespace-nowrap", provider !== "grok_build" && "px-6")}>{t("accounts.quota")}</TableHead>
                 {provider === "grok_build" ? <TableHead className="whitespace-nowrap pl-4">{t("accountCredential.label")}</TableHead> : null}
@@ -1625,6 +1644,7 @@ export function AccountsPage() {
 	                    <TableCell className="min-w-0"><AccountNameCell account={account} qualityFlag={qualityFlags.get(account.id)} /></TableCell>
                     <TableCell className="text-center whitespace-nowrap">{provider === "grok_web" ? <WebAccountType tier={account.webTier} /> : provider === "grok_console" ? <AccountTypeText label={t("accountType.console")} variant="free" /> : <AccountType quota={account.quota} planTier={account.planTier} planRaw={account.planRaw} />}</TableCell>
                     <TableCell className="text-center whitespace-nowrap"><AccountStatus account={account} /></TableCell>
+                    <TableCell className="text-center whitespace-nowrap tabular-nums">{account.priority}</TableCell>
                     <TableCell className="text-center whitespace-nowrap"><ConcurrencyValue value={currentConcurrency(account)} /></TableCell>
                     <TableCell className={provider === "grok_build" ? undefined : "px-6"}>{renderAccountQuota(account)}</TableCell>
                     {provider === "grok_build" ? <TableCell className="whitespace-nowrap pl-4 text-xs">{renderAccountCredential(account)}</TableCell> : null}
@@ -2145,6 +2165,41 @@ export function AccountsPage() {
               onClick={() => batchConcurrencyMutation.mutate(Number(batchMaxConcurrent))}
             >
               {batchConcurrencyMutation.isPending ? <Spinner /> : null}
+              {t("common.save")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={batchPriorityOpen} onOpenChange={(open) => {
+        if (!open && batchPriorityMutation.isPending) return;
+        setBatchPriorityOpen(open);
+      }}>
+        <DialogContent className="sm:max-w-[460px]">
+          <DialogHeader>
+            <DialogTitle>{t("accounts.batchPriorityTitle", { count: selected.size })}</DialogTitle>
+            <DialogDescription>{t("accounts.batchPriorityDescription")}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="batch-account-priority">{t("accounts.priority")}</Label>
+            <Input
+              id="batch-account-priority"
+              type="number"
+              step="1"
+              value={batchPriority}
+              disabled={batchPriorityMutation.isPending}
+              onChange={(event) => setBatchPriority(event.target.value)}
+            />
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="secondary" size="sm" disabled={batchPriorityMutation.isPending} onClick={() => setBatchPriorityOpen(false)}>{t("common.cancel")}</Button>
+            <Button
+              type="button"
+              size="sm"
+              disabled={batchPriorityMutation.isPending || batchPriority.trim() === "" || !Number.isInteger(Number(batchPriority))}
+              onClick={() => batchPriorityMutation.mutate(Number(batchPriority))}
+            >
+              {batchPriorityMutation.isPending ? <Spinner /> : null}
               {t("common.save")}
             </Button>
           </DialogFooter>

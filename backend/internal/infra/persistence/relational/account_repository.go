@@ -143,6 +143,7 @@ func (r *AccountRepository) List(ctx context.Context, input repository.AccountLi
 		"name":      {expression: "LOWER(provider_accounts.name)"},
 		"type":      {expression: accountTypeSortExpression},
 		"status":    {expression: accountStatusSortExpression},
+		"priority":  {expression: "provider_accounts.priority", defaultDirection: repository.SortDescending},
 		"createdAt": {expression: "provider_accounts.created_at", defaultDirection: repository.SortDescending},
 	}, sortSpec{expression: "provider_accounts.created_at", defaultDirection: repository.SortDescending}, "provider_accounts.id")
 	if err := query.Preload("Credential").Preload("WebProfile").Offset(input.Page.Offset).Limit(input.Page.Limit).Find(&rows).Error; err != nil {

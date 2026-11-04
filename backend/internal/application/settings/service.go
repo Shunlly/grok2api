@@ -103,6 +103,9 @@ type RoutingConfig struct {
 	MaxAttempts                         int
 	VideoMaxAttempts                    int
 	PreferFreeBuild                     bool
+	AccountPriorityMode                 string
+	PriorityOverridesSticky             bool
+	PriorityOverridesStickyProvided     bool
 	MarkBuildChatDeniedAsReauth         bool
 	MarkBuildChatDeniedAsReauthProvided bool
 	AccountIsolatedConnections          bool
@@ -399,11 +402,21 @@ func applyDomainConfig(base config.Config, value settingsdomain.Config) config.C
 		segmentedMinCandidates = value.Routing.SegmentedSelector.MinCandidates
 		segmentedWindowSize = value.Routing.SegmentedSelector.WindowSize
 	}
+	priorityMode := base.Routing.AccountPriorityMode
+	if value.Routing.AccountPriorityMode != "" {
+		priorityMode = value.Routing.AccountPriorityMode
+	}
+	priorityOverridesSticky := base.Routing.PriorityOverridesSticky
+	if value.Routing.PriorityOverridesSticky != nil {
+		priorityOverridesSticky = *value.Routing.PriorityOverridesSticky
+	}
 	base.Routing = config.RoutingConfig{
 		StickyTTL: config.Duration(value.Routing.StickyTTL), CooldownBase: config.Duration(value.Routing.CooldownBase),
 		CooldownMax: config.Duration(value.Routing.CooldownMax), CapacityWait: config.Duration(capacityWait), MaxAttempts: value.Routing.MaxAttempts, VideoMaxAttempts: value.Routing.VideoMaxAttempts,
 		MarkBuildChatDeniedAsReauth: value.Routing.MarkBuildChatDeniedAsReauth,
 		PreferFreeBuild:             value.Routing.PreferFreeBuild,
+		AccountPriorityMode:         priorityMode,
+		PriorityOverridesSticky:     priorityOverridesSticky,
 		AccountIsolatedConnections:  accountIsolatedConnections,
 		SegmentedSelectorEnabled:    segmentedEnabled,
 		SegmentedMinCandidates:      segmentedMinCandidates,
@@ -451,6 +464,7 @@ func applyDomainConfig(base config.Config, value settingsdomain.Config) config.C
 func toDomainConfig(value config.Config) settingsdomain.Config {
 	randomDelay := value.Batch.RandomDelay.Value()
 	accountIsolatedConnections := value.Routing.AccountIsolatedConnections
+	priorityOverridesSticky := value.Routing.PriorityOverridesSticky
 	autoDisableDegradedAccounts := value.QualityGuard.RequestRetry.AutoDisable
 	return settingsdomain.Config{
 		Server: settingsdomain.ServerConfig{MaxConcurrentRequests: value.Server.MaxConcurrentRequests},
@@ -495,6 +509,8 @@ func toDomainConfig(value config.Config) settingsdomain.Config {
 			CooldownMax: value.Routing.CooldownMax.Value(), CapacityWait: value.Routing.CapacityWait.Value(), MaxAttempts: value.Routing.MaxAttempts, VideoMaxAttempts: value.Routing.VideoMaxAttempts,
 			MarkBuildChatDeniedAsReauth: value.Routing.MarkBuildChatDeniedAsReauth,
 			PreferFreeBuild:             value.Routing.PreferFreeBuild,
+			AccountPriorityMode:         value.Routing.AccountPriorityMode,
+			PriorityOverridesSticky:     &priorityOverridesSticky,
 			AccountIsolatedConnections:  &accountIsolatedConnections,
 			SegmentedSelector: &settingsdomain.SegmentedSelectorConfig{
 				ActiveEnabled: value.Routing.SegmentedSelectorEnabled,
@@ -586,6 +602,15 @@ func mergeEditable(current config.Config, input EditableConfig) (config.Config, 
 	next.Routing.MaxAttempts = input.Routing.MaxAttempts
 	next.Routing.VideoMaxAttempts = input.Routing.VideoMaxAttempts
 	next.Routing.PreferFreeBuild = input.Routing.PreferFreeBuild
+	if input.Routing.AccountPriorityMode != "" {
+		if input.Routing.AccountPriorityMode != "soft" && input.Routing.AccountPriorityMode != "strict" {
+			return config.Config{}, errors.New("routing.accountPriorityMode 仅支持 soft 或 strict")
+		}
+		next.Routing.AccountPriorityMode = input.Routing.AccountPriorityMode
+	}
+	if input.Routing.PriorityOverridesStickyProvided {
+		next.Routing.PriorityOverridesSticky = input.Routing.PriorityOverridesSticky
+	}
 	if input.Routing.AccountIsolatedConnectionsProvided {
 		next.Routing.AccountIsolatedConnections = input.Routing.AccountIsolatedConnections
 	}
@@ -737,6 +762,9 @@ func toEditable(cfg config.Config) EditableConfig {
 			MarkBuildChatDeniedAsReauth:         cfg.Routing.MarkBuildChatDeniedAsReauth,
 			MarkBuildChatDeniedAsReauthProvided: true,
 			PreferFreeBuild:                     cfg.Routing.PreferFreeBuild,
+			AccountPriorityMode:                 cfg.Routing.AccountPriorityMode,
+			PriorityOverridesSticky:             cfg.Routing.PriorityOverridesSticky,
+			PriorityOverridesStickyProvided:     true,
 			AccountIsolatedConnections:          cfg.Routing.AccountIsolatedConnections,
 			AccountIsolatedConnectionsProvided:  true,
 			SegmentedSelector: SegmentedSelectorConfig{

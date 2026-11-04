@@ -351,6 +351,8 @@ type Selector struct {
 	cooldownMax            time.Duration
 	capacityWait           time.Duration
 	preferFreeBuild        bool
+	priorityMode           string
+	priorityOverrideSticky bool
 	excludeBuildBotFlagged bool
 	segmentedConfig        segmentedSelectorConfig
 	segmentedState         segmentedSelectorState
@@ -392,7 +394,7 @@ func NewSelector(accounts repository.AccountRepository, concurrency repository.C
 	if len(capacityWait) > 0 && capacityWait[0] > 0 {
 		wait = capacityWait[0]
 	}
-	return &Selector{accounts: accounts, concurrency: concurrency, sticky: sticky, tierOrders: tierOrders, stickyTTL: stickyTTL, cooldownBase: cooldownBase, cooldownMax: cooldownMax, capacityWait: wait, leaseWake: make(chan struct{}), logger: slog.Default(), lastSelectedAt: make(map[uint64]time.Time), lastSuccessAt: make(map[uint64]time.Time), healthOverrides: make(map[uint64]routingHealthOverride), quotaConsumed: make(map[quotaConsumptionKey]int), staleFallbackLoggedAt: make(map[string]time.Time), candidates: make(map[candidateCacheKey]candidateSnapshot), routingBases: make(map[routingBaseCacheKey]routingBaseSnapshot), routingOverlays: make(map[routingOverlayCacheKey]routingOverlaySnapshot), routingAccountProvider: make(map[uint64]account.Provider), baseProviderVersion: make(map[account.Provider]uint64), overlayProviderVersion: make(map[account.Provider]uint64), concurrencySnapshots: resultcache.New[[32]byte, map[string]int](maxConcurrencySnapshots, concurrencySnapshotTTL), affinityBusyCap: DefaultAffinityBusyCap, affinityBusyGap: DefaultAffinityBusyGap}
+	return &Selector{accounts: accounts, concurrency: concurrency, sticky: sticky, tierOrders: tierOrders, stickyTTL: stickyTTL, cooldownBase: cooldownBase, cooldownMax: cooldownMax, capacityWait: wait, leaseWake: make(chan struct{}), logger: slog.Default(), lastSelectedAt: make(map[uint64]time.Time), lastSuccessAt: make(map[uint64]time.Time), healthOverrides: make(map[uint64]routingHealthOverride), quotaConsumed: make(map[quotaConsumptionKey]int), staleFallbackLoggedAt: make(map[string]time.Time), candidates: make(map[candidateCacheKey]candidateSnapshot), routingBases: make(map[routingBaseCacheKey]routingBaseSnapshot), routingOverlays: make(map[routingOverlayCacheKey]routingOverlaySnapshot), routingAccountProvider: make(map[uint64]account.Provider), baseProviderVersion: make(map[account.Provider]uint64), overlayProviderVersion: make(map[account.Provider]uint64), concurrencySnapshots: resultcache.New[[32]byte, map[string]int](maxConcurrencySnapshots, concurrencySnapshotTTL), affinityBusyCap: DefaultAffinityBusyCap, affinityBusyGap: DefaultAffinityBusyGap, priorityMode: PriorityModeSoft, priorityOverrideSticky: true}
 }
 
 // SetLogger wires the application logger into routing degradation diagnostics.
@@ -419,6 +421,41 @@ func (s *Selector) UpdatePreferFreeBuild(value bool) {
 	s.configMu.Lock()
 	s.preferFreeBuild = value
 	s.configMu.Unlock()
+}
+
+const (
+	// PriorityModeSoft 保持原有排序：priority 位于额度/等级等信号之后。
+	PriorityModeSoft = "soft"
+	// PriorityModeStrict 严格按 priority 分层，高层可用时不使用低层账号。
+	PriorityModeStrict = "strict"
+)
+
+// NormalizePriorityMode 将未知值回退为 soft。
+func NormalizePriorityMode(value string) string {
+	if value == PriorityModeStrict {
+		return PriorityModeStrict
+	}
+	return PriorityModeSoft
+}
+
+// UpdatePriorityMode 热更新账号优先级策略。
+func (s *Selector) UpdatePriorityMode(mode string, overridesSticky bool) {
+	s.configMu.Lock()
+	s.priorityMode = NormalizePriorityMode(mode)
+	s.priorityOverrideSticky = overridesSticky
+	s.configMu.Unlock()
+}
+
+func (s *Selector) strictPriorityEnabled() bool {
+	s.configMu.RLock()
+	defer s.configMu.RUnlock()
+	return s.priorityMode == PriorityModeStrict
+}
+
+func (s *Selector) strictPriorityOverridesSticky() bool {
+	s.configMu.RLock()
+	defer s.configMu.RUnlock()
+	return s.priorityMode == PriorityModeStrict && s.priorityOverrideSticky
 }
 
 // UpdateSegmentedSelector changes the large-pool bounded planner policy.

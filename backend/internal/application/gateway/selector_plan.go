@@ -23,6 +23,7 @@ type candidateScore struct {
 	inFlight          int
 	remaining         float64
 	lastSelected      time.Time
+	strictPriority    bool
 }
 
 // candidatePlan 使用线性建堆保留完整路由优先级，并允许 claim 失败后按顺序取下一账号。
@@ -77,6 +78,9 @@ func candidateScoreBetter(values []account.RoutingCandidate, leftScore, rightSco
 	if leftKnown != rightKnown {
 		return leftKnown
 	}
+	if leftScore.strictPriority {
+		return strictPriorityScoreBetter(left, right, leftScore, rightScore)
+	}
 	// A synced remote window with remaining quota is a stronger routing signal
 	// than priority or tier. Unknown windows remain eligible as a fallback, but
 	// cannot displace an account whose requested mode is known to be available.
@@ -108,6 +112,31 @@ func candidateScoreBetter(values []account.RoutingCandidate, leftScore, rightSco
 	}
 	if leftScore.remaining != rightScore.remaining {
 		return leftScore.remaining > rightScore.remaining
+	}
+	if !leftScore.lastSelected.Equal(rightScore.lastSelected) {
+		return leftScore.lastSelected.Before(rightScore.lastSelected)
+	}
+	return left.ID < right.ID
+}
+
+// strictPriorityScoreBetter 实现严格分层：priority 高的层先用完，同层内按
+// 在途请求少、最久未被选中轮询。已知满载/冷却/排除的账号在进入计划前已被过滤，
+// 因此高层不可用时会自然降级到下一层。
+func strictPriorityScoreBetter(left, right account.Credential, leftScore, rightScore candidateScore) bool {
+	if left.Priority != right.Priority {
+		return left.Priority > right.Priority
+	}
+	if leftScore.quotaAvailable != rightScore.quotaAvailable {
+		return leftScore.quotaAvailable
+	}
+	if leftScore.quotaKnown != rightScore.quotaKnown {
+		return leftScore.quotaKnown
+	}
+	if leftScore.poolNearlyUsed != rightScore.poolNearlyUsed {
+		return !leftScore.poolNearlyUsed
+	}
+	if leftScore.inFlight != rightScore.inFlight {
+		return leftScore.inFlight < rightScore.inFlight
 	}
 	if !leftScore.lastSelected.Equal(rightScore.lastSelected) {
 		return leftScore.lastSelected.Before(rightScore.lastSelected)
@@ -180,6 +209,7 @@ func (s *Selector) planCandidateIndexesWithHints(ctx context.Context, values []a
 		}
 	}
 
+	strictPriority := s.strictPriorityEnabled()
 	s.selectionMu.RLock()
 	scores := make([]candidateScore, 0, length)
 	for position := range length {
@@ -202,7 +232,7 @@ func (s *Selector) planCandidateIndexesWithHints(ctx context.Context, values []a
 			webCatalogSupport: candidate.Credential.Provider == account.ProviderWeb && len(tierOrder) > 0 && webTierInOrder(tierOrder, candidate.Credential.WebTier),
 			preferFreeBuild:   preferFreeBuild && candidate.IsKnownFreeBuild(),
 			inFlight:          inFlight[position], lastSelected: s.lastSelectedAt[candidate.Credential.ID],
-			poolNearlyUsed: usagePoolNearlyExhausted(candidate, now),
+			poolNearlyUsed: usagePoolNearlyExhausted(candidate, now), strictPriority: strictPriority,
 		}
 		// 只有真实上游快照能够证明账号具备该模式额度。历史默认值和
 		// 本地预测值都属于未知能力，只保留为路由兜底。

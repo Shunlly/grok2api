@@ -21,6 +21,7 @@ export type SettingsConfigDTO = {
   frontend: { publicApiBaseURL: string };
   routing: {
     stickyTTL: string; cooldownBase: string; cooldownMax: string; capacityWait: string; maxAttempts: number; videoMaxAttempts: number; preferFreeBuild: boolean; markBuildChatDeniedAsReauth: boolean;
+    accountPriorityMode?: "soft" | "strict"; priorityOverridesSticky?: boolean;
     accountIsolatedConnections: boolean;
     segmentedSelector: { enabled: boolean; minCandidates: number; windowSize: number };
   };
@@ -130,6 +131,7 @@ const settingsConfigValidator = hasShape({
   frontend: hasShape({ publicApiBaseURL: isString }),
   routing: hasShape({
     stickyTTL: isString, cooldownBase: isString, cooldownMax: isString, capacityWait: isString, maxAttempts: isNumber, videoMaxAttempts: isNumber, preferFreeBuild: isBoolean, markBuildChatDeniedAsReauth: isBoolean,
+    accountPriorityMode: isOptional(isString), priorityOverridesSticky: isOptional(isBoolean),
     accountIsolatedConnections: isOptional(isBoolean),
     segmentedSelector: isOptional(hasShape({ enabled: isBoolean, minCandidates: isNumber, windowSize: isNumber })),
   }),
