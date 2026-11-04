@@ -30,6 +30,7 @@ type segmentedSelectorCohort struct {
 	tier            int
 	priority        int
 	billingFresh    bool
+	strictPriority  bool
 }
 
 type selectorLeaseObservation struct {
@@ -97,6 +98,9 @@ func segmentedSelectorCohortBetter(left, right segmentedSelectorCohort) bool {
 	}
 	if left.capabilityKnown != right.capabilityKnown {
 		return left.capabilityKnown
+	}
+	if left.strictPriority && left.priority != right.priority {
+		return left.priority > right.priority
 	}
 	if left.quotaAvailable != right.quotaAvailable {
 		return left.quotaAvailable

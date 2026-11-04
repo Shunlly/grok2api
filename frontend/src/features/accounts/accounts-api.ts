@@ -731,6 +731,10 @@ export function updateAccountsMaxConcurrent(ids: string[], maxConcurrent: number
   return apiRequest("/api/admin/v1/accounts/batch", { method: "PATCH", body: { ids, maxConcurrent, provider } }, decodeCountResult<{ updated: number }>("updated"));
 }
 
+export function updateAccountsPriority(ids: string[], priority: number, provider: AccountProvider): Promise<{ updated: number }> {
+  return apiRequest("/api/admin/v1/accounts/batch", { method: "PATCH", body: { ids, priority, provider } }, decodeCountResult<{ updated: number }>("updated"));
+}
+
 export function refreshAccountsQuota(ids: string[], provider: AccountProvider): Promise<{ succeeded: number; failed: number }> {
   return apiRequest("/api/admin/v1/accounts/batch/refresh-quotas", { method: "POST", body: { ids, provider } }, createObjectDecoder("account batch", { succeeded: isNumber, failed: isNumber }));
 }

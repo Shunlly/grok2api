@@ -105,6 +105,8 @@ type routingConfigDTO struct {
 	MaxAttempts                 int                         `json:"maxAttempts"`
 	VideoMaxAttempts            int                         `json:"videoMaxAttempts"`
 	PreferFreeBuild             bool                        `json:"preferFreeBuild"`
+	AccountPriorityMode         string                      `json:"accountPriorityMode,omitempty"`
+	PriorityOverridesSticky     *bool                       `json:"priorityOverridesSticky,omitempty"`
 	MarkBuildChatDeniedAsReauth *bool                       `json:"markBuildChatDeniedAsReauth,omitempty"`
 	AccountIsolatedConnections  *bool                       `json:"accountIsolatedConnections,omitempty"`
 	SegmentedSelector           *segmentedSelectorConfigDTO `json:"segmentedSelector,omitempty"`
@@ -231,6 +233,9 @@ func (value settingsConfigDTO) toApplication() settingsapp.EditableConfig {
 			StickyTTL: value.Routing.StickyTTL, CooldownBase: value.Routing.CooldownBase,
 			CooldownMax: value.Routing.CooldownMax, CapacityWait: value.Routing.CapacityWait, MaxAttempts: value.Routing.MaxAttempts, VideoMaxAttempts: value.Routing.VideoMaxAttempts,
 			PreferFreeBuild:                     value.Routing.PreferFreeBuild,
+			AccountPriorityMode:                 value.Routing.AccountPriorityMode,
+			PriorityOverridesSticky:             boolValue(value.Routing.PriorityOverridesSticky),
+			PriorityOverridesStickyProvided:     value.Routing.PriorityOverridesSticky != nil,
 			MarkBuildChatDeniedAsReauth:         boolValue(value.Routing.MarkBuildChatDeniedAsReauth),
 			MarkBuildChatDeniedAsReauthProvided: value.Routing.MarkBuildChatDeniedAsReauth != nil,
 			AccountIsolatedConnections:          boolValue(value.Routing.AccountIsolatedConnections),
@@ -318,6 +323,8 @@ func newSettingsResponse(value settingsapp.Snapshot) settingsResponse {
 				CooldownMax: config.Routing.CooldownMax, CapacityWait: config.Routing.CapacityWait, MaxAttempts: config.Routing.MaxAttempts, VideoMaxAttempts: config.Routing.VideoMaxAttempts,
 				MarkBuildChatDeniedAsReauth: boolPointer(config.Routing.MarkBuildChatDeniedAsReauth),
 				PreferFreeBuild:             config.Routing.PreferFreeBuild,
+				AccountPriorityMode:         config.Routing.AccountPriorityMode,
+				PriorityOverridesSticky:     boolPointer(config.Routing.PriorityOverridesSticky),
 				AccountIsolatedConnections:  boolPointer(config.Routing.AccountIsolatedConnections),
 				SegmentedSelector: &segmentedSelectorConfigDTO{
 					Enabled: config.Routing.SegmentedSelector.Enabled, MinCandidates: config.Routing.SegmentedSelector.MinCandidates,

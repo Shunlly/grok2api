@@ -301,6 +301,10 @@ type RoutingConfig struct {
 	MaxAttempts      int      `yaml:"maxAttempts"`
 	VideoMaxAttempts int      `yaml:"videoMaxAttempts"`
 	PreferFreeBuild  bool     `yaml:"preferFreeBuild"`
+	// AccountPriorityMode: soft（默认，原排序）| strict（按 priority 严格分层）。
+	AccountPriorityMode string `yaml:"accountPriorityMode"`
+	// PriorityOverridesSticky 仅 strict 生效：存在更高层可用账号时粘性会话让位，默认 true。
+	PriorityOverridesSticky bool `yaml:"priorityOverridesSticky"`
 	// MarkBuildChatDeniedAsReauth 为 true 时，Build chat 权限拒绝标 reauthRequired，默认 false。
 	MarkBuildChatDeniedAsReauth bool     `yaml:"markBuildChatDeniedAsReauth"`
 	AccountIsolatedConnections  bool     `yaml:"accountIsolatedConnections"`
@@ -832,6 +836,9 @@ func (c Config) Validate() error {
 	if c.Provider.Web.RecoveryBackoffBase.Value() < 5*time.Second || c.Provider.Web.RecoveryBackoffMax.Value() < c.Provider.Web.RecoveryBackoffBase.Value() || c.Provider.Web.RecoveryBackoffMax.Value() > 6*time.Hour {
 		return errors.New("provider.web 恢复退避配置无效")
 	}
+	if c.Routing.AccountPriorityMode != "" && c.Routing.AccountPriorityMode != "soft" && c.Routing.AccountPriorityMode != "strict" {
+		return errors.New("routing.accountPriorityMode 仅支持 soft 或 strict")
+	}
 	if c.Routing.StickyTTL.Value() <= 0 || c.Routing.StickyTTL.Value() > maxRoutingTTL || c.Routing.CooldownBase.Value() <= 0 || c.Routing.CooldownMax.Value() < c.Routing.CooldownBase.Value() || c.Routing.CooldownMax.Value() > maxRoutingCooldown || c.Routing.CapacityWait.Value() <= 0 || c.Routing.CapacityWait.Value() > maxRoutingCapacityWait || (c.Routing.MaxAttempts < unlimitedRoutingAttempts || c.Routing.MaxAttempts == 0 || c.Routing.MaxAttempts > maxRoutingAttempts) || (c.Routing.VideoMaxAttempts < unlimitedRoutingAttempts || c.Routing.VideoMaxAttempts > maxRoutingAttempts) {
 		return errors.New("routing 配置无效")
 	}
@@ -1126,6 +1133,8 @@ func defaultConfig() Config {
 			VideoMaxAttempts:            5,
 			MarkBuildChatDeniedAsReauth: false,
 			PreferFreeBuild:             false,
+			AccountPriorityMode:         "soft",
+			PriorityOverridesSticky:     true,
 			AccountIsolatedConnections:  false,
 			SegmentedSelectorEnabled:    true,
 			SegmentedMinCandidates:      3000,

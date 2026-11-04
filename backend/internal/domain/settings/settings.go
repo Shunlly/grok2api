@@ -117,6 +117,10 @@ type RoutingConfig struct {
 	MaxAttempts      int
 	VideoMaxAttempts int
 	PreferFreeBuild  bool
+	// AccountPriorityMode 为空时沿用启动配置。
+	AccountPriorityMode string `json:",omitempty"`
+	// PriorityOverridesSticky 为 nil 时沿用启动配置。
+	PriorityOverridesSticky *bool `json:",omitempty"`
 	// MarkBuildChatDeniedAsReauth 为 true 时，Build chat 权限拒绝标 reauthRequired，默认 false 保留模型级冷却。
 	MarkBuildChatDeniedAsReauth bool
 	// AccountIsolatedConnections is optional so persisted payloads written by

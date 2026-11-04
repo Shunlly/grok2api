@@ -143,6 +143,12 @@ routing:
   reasoningReplayMaxEntries: 10240
   # [按需修改] 按账号隔离上游连接池，适合外部 L4/连接哈希负载均衡；会增加连接数、TLS 握手和文件描述符占用。
   accountIsolatedConnections: false
+  # [按需修改] 账号优先级策略：soft（默认，priority 仅在额度/等级等条件相同时生效）
+  # strict（严格分层：priority 高的账号可用时不使用低层账号；同层按在途少、最久未用轮询；
+  # 高层被排除/冷却/满载时自动降级到下一层）。也可在管理端“设置 -> 路由策略”热更新。
+  accountPriorityMode: soft
+  # [按需修改] 仅 strict 生效：存在更高优先级可用账号时，会话粘性让位并重绑。
+  priorityOverridesSticky: true
   # [通常不要修改] 大账号池默认使用有界分段选号；保留完整池回退、额度优先级和原子并发门禁。
   segmentedSelectorEnabled: true
   segmentedSelectorMinCandidates: 3000

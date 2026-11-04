@@ -240,6 +240,10 @@ func (session *selectionSession) acquireNormal(ctx context.Context, excluded map
 				if candidate.Credential.ID != stickyID {
 					continue
 				}
+				// 严格优先级：存在更高层可用账号时，粘性账号让位，由计划重新选号并重绑粘性。
+				if session.selector.strictPriorityOverridesSticky() && session.hasHigherPriorityCandidate(excluded, candidate.Credential.Priority) {
+					break
+				}
 				// Busy sticky account: borrow a less loaded account for this request only;
 				// the sticky binding is left untouched so the session returns once load drops.
 				spill, spillErr := session.selector.tryAffinitySpill(ctx, session.values, session.unexcludedNormalIndexes(excluded), stickyID, session.quotaMode, &session.materialFailures)
@@ -414,4 +418,15 @@ func (session *selectionSession) candidateExcluded(excluded map[uint64]bool, acc
 
 func (session *selectionSession) markCandidateStale(accountID uint64) {
 	session.staleCandidates[accountID] = true
+}
+
+// hasHigherPriorityCandidate 判断是否存在未排除且 priority 更高的普通候选。
+func (session *selectionSession) hasHigherPriorityCandidate(excluded map[uint64]bool, priority int) bool {
+	for _, index := range session.normalCandidates {
+		value := session.values[index].Credential
+		if value.Priority > priority && !session.candidateExcluded(excluded, value.ID) {
+			return true
+		}
+	}
+	return false
 }
