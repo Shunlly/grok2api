@@ -59,9 +59,10 @@ func (c *responsesToolCompatibility) normalizeInputItems(items []any) ([]any, []
 			c.changed = true
 			rewritten = append(rewritten, converted)
 		case "tool_search_call":
-			callID := strings.TrimSpace(stringField(item, "call_id"))
-			if callID == "" {
-				return nil, nil, nil, &responsesRequestError{Message: param + ".call_id 不能为空", Param: param + ".call_id", Code: "invalid_parameter"}
+			callID, synthesized := resolveCallID(item)
+			if synthesized {
+				c.changed = true
+				c.addWarning("synthetic_call_id")
 			}
 			execution := strings.ToLower(strings.TrimSpace(stringField(item, "execution")))
 			if execution == "" || execution == "server" {
@@ -88,9 +89,10 @@ func (c *responsesToolCompatibility) normalizeInputItems(items []any) ([]any, []
 			if execution != "" && execution != "client" && execution != "server" {
 				return nil, nil, nil, &responsesRequestError{Message: "tool_search_output.execution 只支持 client 或 server", Param: param + ".execution", Code: "invalid_parameter"}
 			}
-			callID := strings.TrimSpace(stringField(item, "call_id"))
-			if callID == "" {
-				return nil, nil, nil, &responsesRequestError{Message: param + ".call_id 不能为空", Param: param + ".call_id", Code: "invalid_parameter"}
+			callID, synthesized := resolveCallID(item)
+			if synthesized {
+				c.changed = true
+				c.addWarning("synthetic_call_id")
 			}
 			tools, ok := item["tools"].([]any)
 			if !ok {
@@ -216,9 +218,10 @@ func (c *responsesToolCompatibility) normalizeFunctionCallInput(item map[string]
 	if name == "" {
 		return nil, &responsesRequestError{Message: param + ".name 不能为空", Param: param + ".name", Code: "invalid_parameter"}
 	}
-	callID := strings.TrimSpace(stringField(item, "call_id"))
-	if callID == "" {
-		return nil, &responsesRequestError{Message: param + ".call_id 不能为空", Param: param + ".call_id", Code: "invalid_parameter"}
+	callID, synthesized := resolveCallID(item)
+	if synthesized {
+		c.changed = true
+		c.addWarning("synthetic_call_id")
 	}
 	arguments, err := encodeFunctionArguments(item["arguments"])
 	if err != nil {
@@ -246,9 +249,10 @@ func (c *responsesToolCompatibility) normalizeCustomToolCallInput(item map[strin
 	if err != nil {
 		return nil, err
 	}
-	callID := strings.TrimSpace(stringField(item, "call_id"))
-	if callID == "" {
-		return nil, &responsesRequestError{Message: param + ".call_id 不能为空", Param: param + ".call_id", Code: "invalid_parameter"}
+	callID, synthesized := resolveCallID(item)
+	if synthesized {
+		c.changed = true
+		c.addWarning("synthetic_call_id")
 	}
 	namespace := strings.TrimSpace(stringField(item, "namespace"))
 	return map[string]any{

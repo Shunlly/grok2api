@@ -72,9 +72,10 @@ func (c *responsesToolCompatibility) normalizeApplyPatchTool(tool map[string]any
 }
 
 func (c *responsesToolCompatibility) normalizeApplyPatchCallInput(item map[string]any, param string) (map[string]any, error) {
-	callID := strings.TrimSpace(stringField(item, "call_id"))
-	if callID == "" {
-		return nil, &responsesRequestError{Message: param + ".call_id 不能为空", Param: param + ".call_id", Code: "invalid_parameter"}
+	callID, synthesized := resolveCallID(item)
+	if synthesized {
+		c.changed = true
+		c.addWarning("synthetic_call_id")
 	}
 	operation, err := validateApplyPatchOperation(item["operation"], param+".operation")
 	if err != nil {
@@ -92,10 +93,7 @@ func (c *responsesToolCompatibility) normalizeApplyPatchCallInput(item map[strin
 }
 
 func normalizeApplyPatchOutputInput(item map[string]any, param string) (map[string]any, error) {
-	callID := strings.TrimSpace(stringField(item, "call_id"))
-	if callID == "" {
-		return nil, &responsesRequestError{Message: param + ".call_id 不能为空", Param: param + ".call_id", Code: "invalid_parameter"}
-	}
+	callID, _ := resolveCallID(item)
 	status := strings.TrimSpace(stringField(item, "status"))
 	if status == "" {
 		status = "completed"
@@ -157,10 +155,7 @@ func decodeApplyPatchArguments(value any, param string) (map[string]any, error) 
 }
 
 func normalizeLegacyLocalShellCallInput(item map[string]any, param string) (map[string]any, error) {
-	callID := strings.TrimSpace(stringField(item, "call_id"))
-	if callID == "" {
-		return nil, &responsesRequestError{Message: param + ".call_id 不能为空", Param: param + ".call_id", Code: "invalid_parameter"}
-	}
+	callID, _ := resolveCallID(item)
 	action, err := legacyShellAction(item["action"], param+".action")
 	if err != nil {
 		return nil, err
@@ -246,10 +241,7 @@ func legacyShellCommand(action map[string]any, param string) (string, error) {
 }
 
 func normalizeLegacyLocalShellOutputInput(item map[string]any, param string) (map[string]any, error) {
-	callID := strings.TrimSpace(stringField(item, "call_id"))
-	if callID == "" {
-		return nil, &responsesRequestError{Message: param + ".call_id 不能为空", Param: param + ".call_id", Code: "invalid_parameter"}
-	}
+	callID, _ := resolveCallID(item)
 	var output []any
 	switch value := item["output"].(type) {
 	case []any:
@@ -277,10 +269,7 @@ func normalizeLegacyLocalShellOutputInput(item map[string]any, param string) (ma
 }
 
 func normalizeShellCallOutputInput(item map[string]any, param string) (map[string]any, error) {
-	callID := strings.TrimSpace(stringField(item, "call_id"))
-	if callID == "" {
-		return nil, &responsesRequestError{Message: param + ".call_id 不能为空", Param: param + ".call_id", Code: "invalid_parameter"}
-	}
+	callID, _ := resolveCallID(item)
 	output, err := normalizeShellOutputBlocks(item["output"], item["status"], param+".output")
 	if err != nil {
 		return nil, err
@@ -301,9 +290,10 @@ func (c *responsesToolCompatibility) normalizeCustomToolCallOutputInput(item map
 }
 
 func (c *responsesToolCompatibility) normalizeFunctionLikeCallOutputInput(item map[string]any, param string, allowContentBlocks bool) (map[string]any, error) {
-	callID := strings.TrimSpace(stringField(item, "call_id"))
-	if callID == "" {
-		return nil, &responsesRequestError{Message: param + ".call_id 不能为空", Param: param + ".call_id", Code: "invalid_parameter"}
+	callID, synthesized := resolveCallID(item)
+	if synthesized {
+		c.changed = true
+		c.addWarning("synthetic_call_id")
 	}
 	output := item["output"]
 	var err error

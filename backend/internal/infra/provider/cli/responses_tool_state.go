@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/google/uuid"
 )
 
 const (
@@ -134,6 +136,19 @@ func hashedToolAlias(base, key string) string {
 func shortToolHash(value string) string {
 	sum := sha256.Sum256([]byte(value))
 	return hex.EncodeToString(sum[:])[:9]
+}
+
+
+// resolveCallID prefers call_id, then id, then synthesizes a call_* value so
+// Codex Desktop bootstrap outputs that omit call_id still pass Grok Build validation.
+func resolveCallID(item map[string]any) (string, bool) {
+	if callID := strings.TrimSpace(stringField(item, "call_id")); callID != "" {
+		return callID, false
+	}
+	if id := strings.TrimSpace(stringField(item, "id")); id != "" {
+		return id, true
+	}
+	return "call_" + strings.ReplaceAll(uuid.NewString(), "-", ""), true
 }
 
 func stringField(value map[string]any, key string) string {
