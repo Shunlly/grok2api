@@ -2,6 +2,24 @@
 
 Shunlly/grok2api fork of [chenyme/grok2api](https://github.com/chenyme/grok2api).
 
+## v3.5.25 — 2026-11-09
+
+### Synced from upstream (chenyme/grok2api)
+- Reality / utls ECDHE key share handshake compatibility.
+- Console usage-status parsing (budgetCents bounds), WorkOS session path, and optional auto-delete for unlinked Console accounts (settings UI).
+- Transient retry tracking; request timeout cancel vs deadline distinction.
+- SSO→Build device flow consent_token / browser form header fixes.
+- Imagine WebSocket requestId filtering; video worker shutdown recovery; video retry account-scope fix.
+- Legacy authenticated HTTP proxy URL normalization (incl. `{account}` placeholder order).
+- Voice-WS timeout observation and STT billing regardless of transport outcome.
+- Related tests, Dockerfile/Go module and frontend dependency bumps from upstream.
+
+### Preserved fork behavior
+- Strict account priority mode and related settings wiring.
+- Codex `call_id` synthesis for bootstrap function_call_output items.
+- Fork VERSION scheme (3.5.x); Recommended Build client 1.0.70.
+- Speed-based (Token/s) auto-disable remains off (missing-thinking auto-disable unchanged).
+
 ## v3.5.23 — 2026-10-27
 
 ### Fixed

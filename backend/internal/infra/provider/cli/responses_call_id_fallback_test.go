@@ -24,7 +24,7 @@ func TestResolveCallIDSynthesizesWhenMissing(t *testing.T) {
 }
 
 func TestNormalizeFunctionCallOutputSynthesizesMissingCallID(t *testing.T) {
-	c := &responsesToolCompatibility{}
+	c := newResponsesToolCompatibility()
 	out, err := c.normalizeFunctionCallOutputInput(map[string]any{
 		"type": "function_call_output",
 		"id":   "fco_01a1be00_apps_open_page",

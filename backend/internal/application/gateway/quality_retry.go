@@ -598,6 +598,26 @@ func (s *Service) applyMissingThinkingPenalty(ctx context.Context, requestID str
 	}
 }
 
+func (s *Service) applyOutputSpeedPenalty(ctx context.Context, record audit.Record, credential accountdomain.Credential, cfg QualityRetryRuntime, forcedEgress bool) error {
+	// Both explicit and TUI compaction are classified in the audit record.
+	// System summaries stay exempt from account quality penalties.
+	if record.Operation == audit.OperationCompaction {
+		return nil
+	}
+	if !cfg.Enabled || !cfg.AutoDisable || forcedEgress || credential.Provider != accountdomain.ProviderBuild || !record.Streaming || record.FirstTokenMS == nil || record.OutputTokens < cfg.MinOutputTokens || !auditRequestSucceeded(record.StatusCode, record.ErrorCode) {
+		return nil
+	}
+	class, tps, _ := audit.ClassifyOutputSpeed(record.OutputTokens, record.ReasoningTokens, *record.FirstTokenMS, record.DurationMS, cfg.SoftTPS, cfg.HardTPS, cfg.MinGenerationMS, cfg.FailClosed)
+	if class == "" {
+		return nil
+	}
+	if err := s.selector.disableAccount(ctx, credential); err != nil {
+		return err
+	}
+	s.logger.Info("quality_degraded_disabled", "request_id", record.RequestID, "account_id", credential.ID, "class", class, "output_tps", tps)
+	return nil
+}
+
 func (s *Service) recordQualityDegraded(ctx context.Context, base audit.Record, credential accountdomain.Credential, usage Usage, startedAt time.Time, trace *infraegress.Trace, provider accountdomain.Provider) {
 	record := base
 	record.EventID = newAuditEventID()

@@ -455,6 +455,7 @@ type AccountsConfig struct {
 	// ExcludeBuildBotFlaggedFromScheduling removes Build accounts with bot_flag_source/bfs in {1,2}
 	// from scheduling only. Linked Web/Console accounts are unaffected.
 	ExcludeBuildBotFlaggedFromScheduling bool
+	AutoDeleteConsoleUnlinked            bool
 	AutoCleanReauthEnabled               bool
 	AutoCleanReauthInterval              Duration
 	AutoCleanReauthMinAge                Duration
@@ -1183,6 +1184,7 @@ func defaultConfig() Config {
 			MarkBuildForbiddenReauth:             false,
 			BuildForbiddenReauthCodes:            []string{"permission-denied"},
 			ExcludeBuildBotFlaggedFromScheduling: false,
+			AutoDeleteConsoleUnlinked:            false,
 			AutoCleanReauthEnabled:               false,
 			AutoCleanReauthInterval:              Duration(10 * time.Minute),
 			AutoCleanReauthMinAge:                Duration(time.Hour),

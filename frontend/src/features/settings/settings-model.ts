@@ -174,6 +174,7 @@ export const settingsSchema = z.object({
       }
     }),
     excludeBuildBotFlaggedFromScheduling: z.boolean(),
+    autoDeleteConsoleUnlinked: z.boolean(),
     autoCleanReauthEnabled: z.boolean(),
     autoCleanReauthInterval: durationSchema.refine((value) => {
       const seconds = durationSeconds(value);
@@ -235,6 +236,7 @@ export function toSettingsForm(config: SettingsConfigDTO): SettingsForm {
       markBuildForbiddenReauth: config.accounts.markBuildForbiddenReauth,
       buildForbiddenReauthCodes: config.accounts.buildForbiddenReauthCodes.join("\n"),
       excludeBuildBotFlaggedFromScheduling: config.accounts.excludeBuildBotFlaggedFromScheduling,
+      autoDeleteConsoleUnlinked: config.accounts.autoDeleteConsoleUnlinked,
       autoCleanReauthEnabled: config.accounts.autoCleanReauthEnabled,
       autoCleanReauthInterval: parseDuration(config.accounts.autoCleanReauthInterval),
       autoCleanReauthMinAge: parseDuration(config.accounts.autoCleanReauthMinAge),
@@ -287,6 +289,7 @@ export function toSettingsDTO(config: SettingsForm): SettingsConfigDTO {
       markBuildForbiddenReauth: config.accounts.markBuildForbiddenReauth,
       buildForbiddenReauthCodes: parseForbiddenCodes(config.accounts.buildForbiddenReauthCodes),
       excludeBuildBotFlaggedFromScheduling: config.accounts.excludeBuildBotFlaggedFromScheduling,
+      autoDeleteConsoleUnlinked: config.accounts.autoDeleteConsoleUnlinked,
       autoCleanReauthEnabled: config.accounts.autoCleanReauthEnabled,
       autoCleanReauthInterval: formatDuration(config.accounts.autoCleanReauthInterval),
       autoCleanReauthMinAge: formatDuration(config.accounts.autoCleanReauthMinAge),
