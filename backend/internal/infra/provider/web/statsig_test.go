@@ -65,18 +65,48 @@ func TestFetchStatsigMetaContentDoesNotFallbackWhenIndex404HasVerification(t *te
 	}
 }
 
-func TestFetchStatsigMetaContentDoesNotFallbackWhenSuccessfulIndexHasNoVerification(t *testing.T) {
+func TestFetchStatsigMetaContentFallsBackWhenSuccessfulIndexHasNoVerification(t *testing.T) {
 	var paths []string
 	do := func(request *http.Request) (*http.Response, error) {
 		paths = append(paths, request.URL.Path)
-		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`<html><head></head></html>`)), Header: http.Header{}}, nil
+		switch request.URL.Path {
+		case "/index":
+			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`<html><head></head></html>`)), Header: http.Header{}}, nil
+		case "/":
+			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`<html><head><meta name="grok-site-verification" content="root-meta"/></head></html>`)), Header: http.Header{}}, nil
+		default:
+			t.Fatalf("unexpected path %q", request.URL.Path)
+			return nil, nil
+		}
 	}
-	_, err := fetchStatsigMetaContentWithDo(context.Background(), "https://grok.com", "sso-token", &infraegress.Lease{UserAgent: "test-agent"}, do)
-	if !errors.Is(err, errStatsigMetaMissing) {
-		t.Fatalf("err=%v", err)
+	value, err := fetchStatsigMetaContentWithDo(context.Background(), "https://grok.com", "sso-token", &infraegress.Lease{UserAgent: "test-agent"}, do)
+	if err != nil || value != "root-meta" {
+		t.Fatalf("value=%q err=%v paths=%v", value, err, paths)
 	}
-	if len(paths) != 1 || paths[0] != "/index" {
-		t.Fatalf("successful index without verification must not fall back: paths=%v", paths)
+	if len(paths) != 2 || paths[0] != "/index" || paths[1] != "/" {
+		t.Fatalf("expected index then root fallback: paths=%v", paths)
+	}
+}
+
+func TestFetchStatsigMetaContentFollowsSingleRootRedirect(t *testing.T) {
+	var paths []string
+	do := func(request *http.Request) (*http.Response, error) {
+		paths = append(paths, request.URL.Path)
+		switch request.URL.Path {
+		case "/index":
+			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`<html><head></head></html>`)), Header: http.Header{}}, nil
+		case "/":
+			return &http.Response{StatusCode: http.StatusTemporaryRedirect, Body: io.NopCloser(strings.NewReader("")), Header: http.Header{"Location": []string{"/home"}}}, nil
+		case "/home":
+			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`<html><head><meta name="grok-site-verification" content="home-meta"/></head></html>`)), Header: http.Header{}}, nil
+		default:
+			t.Fatalf("unexpected path %q", request.URL.Path)
+			return nil, nil
+		}
+	}
+	value, err := fetchStatsigMetaContentWithDo(context.Background(), "https://grok.com", "sso-token", &infraegress.Lease{UserAgent: "test-agent"}, do)
+	if err != nil || value != "home-meta" {
+		t.Fatalf("value=%q err=%v paths=%v", value, err, paths)
 	}
 }
 

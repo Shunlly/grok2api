@@ -192,12 +192,13 @@ type videoGenerationRequest struct {
 }
 
 type modelListItem struct {
-	ID         string                 `json:"id"`
-	Object     string                 `json:"object"`
-	Created    int64                  `json:"created"`
-	OwnedBy    string                 `json:"owned_by"`
-	Provider   account.Provider       `json:"-"`
-	Capability modeldomain.Capability `json:"-"`
+	ID            string                 `json:"id"`
+	Object        string                 `json:"object"`
+	Created       int64                  `json:"created"`
+	OwnedBy       string                 `json:"owned_by"`
+	Provider      account.Provider       `json:"-"`
+	Capability    modeldomain.Capability `json:"-"`
+	UpstreamModel string                 `json:"-"`
 }
 
 func (h *Handler) listModels(c *gin.Context) {
@@ -257,7 +258,7 @@ func newModelListItems(values []modeldomain.Route) []modelListItem {
 			continue
 		}
 		seen[publicID] = true
-		data = append(data, modelListItem{ID: publicID, Object: "model", Created: value.CreatedAt.Unix(), OwnedBy: "grok2api", Provider: value.Provider, Capability: value.Capability})
+		data = append(data, modelListItem{ID: publicID, Object: "model", Created: value.CreatedAt.Unix(), OwnedBy: "grok2api", Provider: value.Provider, Capability: value.Capability, UpstreamModel: value.UpstreamModel})
 	}
 	return data
 }
@@ -275,14 +276,14 @@ func appendReasoningModelAliases(items []modelListItem) []modelListItem {
 		result = append(result, item)
 	}
 	for _, item := range items {
-		for _, aliasID := range modeldomain.ReasoningAliasPublicIDsForProvider(item.Provider, item.ID) {
+		for _, aliasID := range modeldomain.ReasoningAliasPublicIDsForProviderUpstream(item.Provider, item.ID, item.UpstreamModel) {
 			if seen[aliasID] {
 				continue
 			}
 			seen[aliasID] = true
 			result = append(result, modelListItem{
 				ID: aliasID, Object: "model", Created: item.Created, OwnedBy: item.OwnedBy,
-				Provider: item.Provider, Capability: item.Capability,
+				Provider: item.Provider, Capability: item.Capability, UpstreamModel: item.UpstreamModel,
 			})
 		}
 	}

@@ -2,6 +2,14 @@
 
 Shunlly/grok2api fork of [chenyme/grok2api](https://github.com/chenyme/grok2api).
 
+## v3.5.26 — 2026-11-09
+
+### Fixed
+- Quota refresh no longer retries forever after an account is deleted (`ErrNotFound` drops the pending refresh) — upstream #1100.
+- Grok Web Statsig: do not hard-require missing `grok-site-verification`; fall back to `/`, follow a single 307, reuse stale signatures, and continue unsigned with clear logs when meta/signer is unavailable — upstream #1102/#1104.
+- Detect Castle honeypot gibberish / degraded `web_search` placeholder queries and withhold/retry via quality guard (and reject non-stream completions) instead of returning HTTP 200 word-salad — upstream #1102/#1103.
+- Reasoning-effort aliases follow the current public/export model name using `UpstreamModel` for capability lookup after a rename — upstream #1106.
+
 ## v3.5.25 — 2026-11-09
 
 ### Synced from upstream (chenyme/grok2api)

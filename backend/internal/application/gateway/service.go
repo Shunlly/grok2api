@@ -617,7 +617,13 @@ func (s *Service) resolvePublicModelRoutes(ctx context.Context, publicModel stri
 	// Dynamic effort-suffix aliases (e.g. grok-4.5-low) for any Provider that
 	// exposes the base model. Fixed-reasoning Providers may compatibility-accept
 	// an alias while their wire normalizer drops the unsupported effort.
-	if base, effort, ok := modeldomain.ParseReasoningModelAlias(publicModel); ok {
+	// After a public-name rename (#1106), ParseReasoningModelAlias may miss the
+	// custom slug; SplitReasoningEffortSuffix + UpstreamModel still resolves it.
+	base, effort, parsed := modeldomain.ParseReasoningModelAlias(publicModel)
+	if !parsed {
+		base, effort, parsed = modeldomain.SplitReasoningEffortSuffix(publicModel)
+	}
+	if parsed {
 		if !allowModelAliases {
 			return nil, "", err
 		}
@@ -627,8 +633,12 @@ func (s *Service) resolvePublicModelRoutes(ctx context.Context, publicModel stri
 		}
 		eligible := make([]modeldomain.Route, 0, len(routes))
 		for _, route := range routes {
-			if modeldomain.SupportsReasoningEffortForProvider(route.Provider, route.PublicID, effort) ||
-				modeldomain.IsFixedReasoningForProvider(route.Provider, route.PublicID) {
+			capabilityModel := route.UpstreamModel
+			if strings.TrimSpace(capabilityModel) == "" {
+				capabilityModel = route.PublicID
+			}
+			if modeldomain.SupportsReasoningEffortForProvider(route.Provider, capabilityModel, effort) ||
+				modeldomain.IsFixedReasoningForProvider(route.Provider, capabilityModel) {
 				eligible = append(eligible, route)
 			}
 		}

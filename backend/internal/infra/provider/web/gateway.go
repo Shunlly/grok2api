@@ -344,6 +344,10 @@ func gatewaySession(model string, previous *inferencedomain.WebResponseState) ma
 }
 
 func gatewayTurnEvents(sessionID, prompt string, attachments []string, previous *inferencedomain.WebResponseState) (map[string]any, map[string]any) {
+	return gatewayTurnEventsWithCastle(sessionID, prompt, attachments, previous, "")
+}
+
+func gatewayTurnEventsWithCastle(sessionID, prompt string, attachments []string, previous *inferencedomain.WebResponseState, castleRequestToken string) (map[string]any, map[string]any) {
 	chunks := make([]any, 0, len(attachments)+1)
 	for _, attachment := range attachments {
 		chunks = append(chunks, map[string]any{"mention": map[string]any{"target": map[string]any{"file_mention": map[string]any{"file_id": attachment}}}})
@@ -369,9 +373,13 @@ func gatewayTurnEvents(sessionID, prompt string, attachments []string, previous 
 	if len(attachments) > 0 {
 		itemEvent["event"].(map[string]any)["file_attachment_ids"] = attachments
 	}
+	responsePayload := map[string]any{"type": "response.create", "event_id": fmt.Sprintf("evt_resp_%d", now)}
+	if token := strings.TrimSpace(castleRequestToken); token != "" {
+		responsePayload["castle_request_token"] = token
+	}
 	responseEvent := map[string]any{
 		"session_id": sessionID,
-		"event":      map[string]any{"type": "response.create", "event_id": fmt.Sprintf("evt_resp_%d", now)},
+		"event":      responsePayload,
 	}
 	return itemEvent, responseEvent
 }

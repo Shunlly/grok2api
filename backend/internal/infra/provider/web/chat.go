@@ -911,7 +911,40 @@ func consumeUpstream(source io.Reader, emit func(string, string) error) (parsedC
 func consumeUpstreamWithCitations(source io.Reader, emit func(string, string) error, inlineCitations bool) (parsedChat, error) {
 	parsed := parsedChat{DisableInlineCitations: !inlineCitations}
 	err := consumeUpstreamInto(source, &parsed, emit)
-	return parsed, err
+	if err != nil {
+		return parsed, err
+	}
+	if err := validateParsedChatQuality(&parsed); err != nil {
+		return parsed, err
+	}
+	return parsed, nil
+}
+
+// validateParsedChatQuality rejects known degraded / honeypot completions so
+// callers surface anti-bot / quality errors instead of HTTP 200 gibberish.
+func validateParsedChatQuality(parsed *parsedChat) error {
+	if parsed == nil {
+		return nil
+	}
+	if HostedSearchCallsDegraded(parsed.HostedSearchCalls) {
+		return fmt.Errorf("%w: degraded web_search placeholder query", errWebAntiBot)
+	}
+	urls := make([]string, 0, len(parsed.SearchSources))
+	for _, source := range parsed.SearchSources {
+		if raw, _ := source["url"].(string); raw != "" {
+			urls = append(urls, raw)
+		} else if raw, _ := source["link"].(string); raw != "" {
+			urls = append(urls, raw)
+		}
+	}
+	text := parsed.Text.String()
+	if text == "" {
+		text = parsed.upstreamText.String()
+	}
+	if LooksLikeCastleHoneypot(text, urls) {
+		return fmt.Errorf("%w: castle honeypot gibberish response", errWebAntiBot)
+	}
+	return nil
 }
 
 func consumeUpstreamInto(source io.Reader, parsed *parsedChat, emit func(string, string) error) error {

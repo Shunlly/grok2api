@@ -41,6 +41,8 @@ type qualityScanState struct {
 	terminal                        bool
 	holdExpired                     bool
 	firstVisibleAt                  time.Time
+	placeholderSearch               bool
+	honeypotGibberish               bool
 }
 
 type qualityReadResult struct {
@@ -159,19 +161,21 @@ func (s *qualityScanState) signals() QualityStreamSignals {
 		flushMS = time.Since(s.firstVisibleAt).Milliseconds()
 	}
 	return QualityStreamSignals{
-		HasThinking:       hasThinking,
-		HasReasoningDelta: s.hasThinking,
-		ReasoningStarted:  s.reasoningStarted || hasThinking,
-		VisibleTokens:     visible,
-		ReasoningTokens:   reasoningTokens,
-		OutputTokens:      output,
-		EncryptedBytes:    s.encryptedBytes,
-		EncryptedFloor:    floor,
-		UsageReported:     s.usage.Reported,
-		FirstVisible:      firstVisible,
-		VisibleFlushMS:    flushMS,
-		Terminal:          s.terminal,
-		HoldExpired:       s.holdExpired,
+		HasThinking:        hasThinking,
+		HasReasoningDelta:  s.hasThinking,
+		ReasoningStarted:   s.reasoningStarted || hasThinking,
+		VisibleTokens:      visible,
+		ReasoningTokens:    reasoningTokens,
+		OutputTokens:       output,
+		EncryptedBytes:     s.encryptedBytes,
+		EncryptedFloor:     floor,
+		UsageReported:      s.usage.Reported,
+		FirstVisible:       firstVisible,
+		VisibleFlushMS:     flushMS,
+		Terminal:           s.terminal,
+		HoldExpired:        s.holdExpired,
+		PlaceholderSearch:  s.placeholderSearch,
+		HoneypotGibberish:  s.honeypotGibberish,
 	}
 }
 
@@ -180,6 +184,12 @@ func (s *qualityScanState) signals() QualityStreamSignals {
 func ObserveQualityChunk(state *qualityScanState, chunk []byte) {
 	if state == nil || len(chunk) == 0 {
 		return
+	}
+	if !state.placeholderSearch && qualityChunkHasDegradedWebSearch(chunk) {
+		state.placeholderSearch = true
+	}
+	if !state.honeypotGibberish && qualityChunkLooksLikeHoneypot(chunk) {
+		state.honeypotGibberish = true
 	}
 	state.pending = append(state.pending, chunk...)
 	for {

@@ -91,6 +91,12 @@ type QualityStreamSignals struct {
 	VisibleFlushMS   int64
 	Terminal         bool
 	HoldExpired      bool
+	// PlaceholderSearch is set when hosted web_search used a known
+	// degraded-account placeholder query (chenyme/grok2api#1103).
+	PlaceholderSearch bool
+	// HoneypotGibberish is set when the stream looks like the Castle
+	// missing-token honeypot (chenyme/grok2api#1102).
+	HoneypotGibberish bool
 }
 
 // QualityVerdict is the hold decision for one upstream stream.
@@ -286,6 +292,9 @@ func qualityIsCipherDrool(sig QualityStreamSignals, minOutput int64) bool {
 func ClassifyQualityHold(sig QualityStreamSignals, minOutput int64) QualityVerdict {
 	if minOutput <= 0 {
 		minOutput = defaultQualityMinOutput
+	}
+	if sig.PlaceholderSearch || sig.HoneypotGibberish {
+		return QualityWithhold
 	}
 	if qualityIsBurstDump(sig, minOutput) || qualityIsCipherDrool(sig, minOutput) || qualityIsFakeEncryptedDump(sig, minOutput) || qualityIsFastReasoningRatioDump(sig) {
 		return QualityWithhold
@@ -642,3 +651,49 @@ func (s *Service) recordQualityDegraded(ctx context.Context, base audit.Record, 
 		s.logger.Error("quality_degraded_audit_failed", "event_id", record.EventID, "request_id", record.RequestID, "error", err)
 	}
 }
+
+
+// degradedWebSearchPlaceholders mirrors web.IsDegradedWebSearchQuery without
+// importing the provider package (keeps gateway → provider dependency one-way).
+var degradedWebSearchPlaceholders = []string{
+	"current information and recent sources",
+	"best expert recommendations and evidence",
+	"latest updates and authoritative references",
+}
+
+// IsDegradedWebSearchQuery reports placeholder hosted-search queries used by
+// degraded Grok Web accounts (chenyme/grok2api#1103).
+func IsDegradedWebSearchQuery(query string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(query))
+	if normalized == "" {
+		return false
+	}
+	for _, placeholder := range degradedWebSearchPlaceholders {
+		if normalized == placeholder {
+			return true
+		}
+	}
+	return false
+}
+
+func qualityChunkHasDegradedWebSearch(chunk []byte) bool {
+	lower := strings.ToLower(string(chunk))
+	for _, placeholder := range degradedWebSearchPlaceholders {
+		if strings.Contains(lower, placeholder) {
+			return true
+		}
+	}
+	return false
+}
+
+func qualityChunkLooksLikeHoneypot(chunk []byte) bool {
+	lower := strings.ToLower(string(chunk))
+	fake := 0
+	for _, marker := range []string{"huggingface.co/papers/trending", "arxiv.org/list/cs.ai/recent", "paperswithcode.com/latest"} {
+		if strings.Contains(lower, marker) {
+			fake++
+		}
+	}
+	return fake >= 2
+}
+

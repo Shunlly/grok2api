@@ -262,3 +262,21 @@ func codexSlugs(models []codexModelEntry) []string {
 	}
 	return slugs
 }
+
+
+func TestAppendReasoningModelAliasesUsesUpstreamAfterPublicRename(t *testing.T) {
+	expanded := appendReasoningModelAliases([]modelListItem{{
+		ID: "team-grok", Provider: account.ProviderConsole, Capability: modeldomain.CapabilityResponses,
+		UpstreamModel: "grok-4.6",
+	}})
+	ids := make(map[string]bool, len(expanded))
+	for _, item := range expanded {
+		ids[item.ID] = true
+	}
+	for _, want := range []string{"team-grok", "team-grok-low", "team-grok-medium", "team-grok-high", "team-grok-xhigh"} {
+		if !ids[want] {
+			t.Fatalf("missing renamed alias %q in %#v", want, expanded)
+		}
+	}
+}
+

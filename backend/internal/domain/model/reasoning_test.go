@@ -128,3 +128,25 @@ func TestReasoningAliasPublicIDs(t *testing.T) {
 		t.Fatalf("Console grok-4.6 aliases = %#v", got)
 	}
 }
+
+
+func TestReasoningAliasPublicIDsFollowRenamedPublicName(t *testing.T) {
+	got := ReasoningAliasPublicIDsForProviderUpstream(account.ProviderConsole, "my-custom-grok", "grok-4.6")
+	if len(got) != 4 || got[0] != "my-custom-grok-low" || got[3] != "my-custom-grok-xhigh" {
+		t.Fatalf("renamed public aliases = %#v", got)
+	}
+	if got := ReasoningAliasPublicIDsForProvider(account.ProviderConsole, "my-custom-grok"); len(got) != 0 {
+		t.Fatalf("without upstream, unknown public name must not invent aliases: %#v", got)
+	}
+}
+
+func TestSplitReasoningEffortSuffix(t *testing.T) {
+	base, effort, ok := SplitReasoningEffortSuffix("my-custom-grok-xhigh")
+	if !ok || base != "my-custom-grok" || effort != ReasoningEffortXHigh {
+		t.Fatalf("SplitReasoningEffortSuffix = %q %q %v", base, effort, ok)
+	}
+	if _, _, ok := SplitReasoningEffortSuffix("my-custom-grok"); ok {
+		t.Fatal("base name must not parse as alias")
+	}
+}
+

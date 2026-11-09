@@ -3209,6 +3209,20 @@ func (s *Service) refreshQuota(ctx context.Context, id uint64) (quotaRefreshResu
 		if errors.Is(err, provider.ErrUnauthorized) {
 			err = errors.Join(err, s.markSSOCredentialRejected(ctx, value, ssoRejectedReason(value, err)))
 		}
+		// Never-synced accounts previously failed silently in bulk catch-up
+		// when Statsig meta/signer was broken (#1104). Surface that clearly.
+		neverSynced := true
+		if windows, loadErr := s.accounts.GetQuotaWindows(ctx, []uint64{id}); loadErr == nil {
+			for _, window := range windows[id] {
+				if window.SyncedAt != nil {
+					neverSynced = false
+					break
+				}
+			}
+		}
+		if neverSynced {
+			s.logger.Warn("quota_sync_failed_never_synced_account", "account_id", id, "provider", value.Provider, "error", err)
+		}
 		return quotaRefreshResult{}, err
 	}
 	quotaKind, _ := s.providers.QuotaKind(value.Provider)
@@ -3775,6 +3789,14 @@ func (s *Service) runQuotaRefresh(parent context.Context, request quotaRefreshRe
 		}
 		cancel()
 		if refreshErr != nil || !acquired {
+			// Deleted accounts must not re-enter the backoff loop forever
+			// (chenyme/grok2api#1100): drop the pending refresh once.
+			if errors.Is(refreshErr, ErrNotFound) || errors.Is(refreshErr, repository.ErrNotFound) {
+				s.dropQuotaRefresh(request.key)
+				s.logger.Debug("quota_refresh_dropped_missing_account", "account_id", request.accountID, "mode", request.mode)
+				perfmetrics.Default.Add("quota_refresh_events", perfmetrics.Labels{Subsystem: "quota", Stage: "refresh", Outcome: "dropped"}, 1)
+				return
+			}
 			if errors.Is(refreshErr, provider.ErrEgressBlocked) {
 				// The adapter already logged the egress block once; every
 				// account behind it waits for the shared cool-down.
@@ -3852,6 +3874,12 @@ func (s *Service) runQuotaRefresh(parent context.Context, request quotaRefreshRe
 		}
 		s.quotaRefreshMu.Unlock()
 	}
+}
+
+func (s *Service) dropQuotaRefresh(key string) {
+	s.quotaRefreshMu.Lock()
+	delete(s.quotaRefreshes, key)
+	s.quotaRefreshMu.Unlock()
 }
 
 func (s *Service) deferQuotaRefresh(key string) {

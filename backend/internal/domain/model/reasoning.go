@@ -242,6 +242,52 @@ func ReasoningAliasPublicIDsForProvider(providerValue account.Provider, publicMo
 	return reasoningAliasPublicIDs(publicModel, SupportedReasoningEffortsForProvider(providerValue, publicModel))
 }
 
+// ReasoningAliasPublicIDsForProviderUpstream expands aliases using the current
+// public/export name while resolving supported levels from UpstreamModel.
+// Renaming the public ID (chenyme/grok2api#1106) must not drop effort aliases.
+func ReasoningAliasPublicIDsForProviderUpstream(providerValue account.Provider, publicModel, upstreamModel string) []string {
+	capabilityModel := strings.TrimSpace(upstreamModel)
+	if capabilityModel == "" {
+		capabilityModel = publicModel
+	}
+	return reasoningAliasPublicIDs(publicModel, SupportedReasoningEffortsForProvider(providerValue, capabilityModel))
+}
+
+// SplitReasoningEffortSuffix strips a known effort suffix without requiring the
+// base slug to already be registered. Callers validate the base via route lookup
+// and UpstreamModel capabilities (needed after public-name renames).
+func SplitReasoningEffortSuffix(publicModel string) (baseModel, effort string, ok bool) {
+	name := strings.TrimSpace(publicModel)
+	if name == "" {
+		return "", "", false
+	}
+	providerPrefix := ""
+	local := name
+	for _, candidate := range account.Providers() {
+		prefix := candidate.ModelNamespace() + "/"
+		if len(name) >= len(prefix) && strings.EqualFold(name[:len(prefix)], prefix) {
+			providerPrefix = name[:len(prefix)]
+			local = strings.TrimSpace(name[len(prefix):])
+			break
+		}
+	}
+	for _, level := range reasoningEffortSuffixes {
+		suffix := "-" + level
+		if len(local) <= len(suffix) {
+			continue
+		}
+		if !strings.EqualFold(local[len(local)-len(suffix):], suffix) {
+			continue
+		}
+		base := strings.TrimSpace(local[:len(local)-len(suffix)])
+		if base == "" {
+			continue
+		}
+		return providerPrefix + base, level, true
+	}
+	return "", "", false
+}
+
 func reasoningAliasPublicIDs(publicModel string, levels []string) []string {
 	base := strings.TrimSpace(publicModel)
 	if base == "" {

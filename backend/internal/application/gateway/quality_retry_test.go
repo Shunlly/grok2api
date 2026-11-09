@@ -2028,3 +2028,35 @@ func TestShouldHoldQualityStreamSkipsHiddenReasoningModels(t *testing.T) {
 		t.Fatal("regular reasoning model must still be held")
 	}
 }
+
+
+func TestIsDegradedWebSearchQuery(t *testing.T) {
+	if !IsDegradedWebSearchQuery("current information and recent sources") {
+		t.Fatal("expected placeholder detection")
+	}
+	if IsDegradedWebSearchQuery("Rust 1.90 release notes") {
+		t.Fatal("topic query must pass")
+	}
+}
+
+func TestClassifyQualityHoldWithholdsPlaceholderSearchAndHoneypot(t *testing.T) {
+	if got := ClassifyQualityHold(QualityStreamSignals{PlaceholderSearch: true, VisibleTokens: 4, Terminal: true}, 8); got != QualityWithhold {
+		t.Fatalf("placeholder = %s", got)
+	}
+	if got := ClassifyQualityHold(QualityStreamSignals{HoneypotGibberish: true, VisibleTokens: 4, Terminal: true}, 8); got != QualityWithhold {
+		t.Fatalf("honeypot = %s", got)
+	}
+}
+
+func TestObserveQualityChunkMarksPlaceholderSearch(t *testing.T) {
+	state := &qualityScanState{}
+	ObserveQualityChunk(state, []byte(`data: {"type":"response.web_search_call.in_progress","query":"current information and recent sources"}`+"\n"))
+	if !state.placeholderSearch {
+		t.Fatal("placeholder search not detected from SSE chunk")
+	}
+	sig := state.signals()
+	if !sig.PlaceholderSearch {
+		t.Fatal("signals missing PlaceholderSearch")
+	}
+}
+

@@ -23,6 +23,8 @@ import (
 )
 
 const (
+	// defaultStatsigSignerURL is a legacy community signer. grok.wodf.de may be
+	// NXDOMAIN; production should set provider.web.statsigSignerURL or use manual mode.
 	defaultStatsigSignerURL = "https://grok.wodf.de/sign"
 	statsigCacheTTL         = time.Hour
 	statsigCacheMaxEntries  = 4096
@@ -124,6 +126,20 @@ func (s *statsigSigner) Warm(ctx context.Context, baseURL, signerURL, token stri
 	}
 	meta, err := s.fetchMeta(ctx, baseURL, token, lease)
 	if err != nil {
+		// Meta is optional after grok.com dropped grok-site-verification.
+		// Keep any still-valid stale signatures warm and surface a soft error.
+		if errors.Is(err, errStatsigMetaMissing) {
+			staleHits := 0
+			for _, target := range pending {
+				if value, ok := s.stale(target.key); ok {
+					s.store(target.key, value, now.Add(statsigCacheTTL/4), now)
+					staleHits++
+				}
+			}
+			if staleHits > 0 {
+				return staleHits, nil
+			}
+		}
 		return 0, err
 	}
 	warmed := 0
@@ -286,25 +302,42 @@ func fetchStatsigMetaContentWithDo(ctx context.Context, baseURL, token string, l
 	if err != nil {
 		return "", err
 	}
+	// Grok removed grok-site-verification from the index (chenyme/grok2api#1102/#1104).
+	// Prefer extracting from /index; on missing meta or branded 404, try "/".
+	// Callers must soft-fail when meta stays missing (stale cache / unsigned).
 	if index.statusCode >= 200 && index.statusCode < 300 {
-		// A successful index response without the verification meta remains a hard
-		// protocol failure. Falling back here would hide a changed upstream page.
-		return extractStatsigMetaContent(index.body)
-	}
-	if index.statusCode != http.StatusNotFound {
+		if content, extractErr := extractStatsigMetaContent(index.body); extractErr == nil {
+			return content, nil
+		} else if !errors.Is(extractErr, errStatsigMetaMissing) {
+			return "", extractErr
+		}
+	} else if index.statusCode == http.StatusNotFound {
+		if content, extractErr := extractStatsigMetaContent(index.body); extractErr == nil {
+			return content, nil
+		} else if !errors.Is(extractErr, errStatsigMetaMissing) {
+			return "", extractErr
+		}
+	} else {
+		// Keep hard errors for /index 3xx/4xx/5xx. Redirect following is only
+		// applied to the canonical "/" fetch below (observed 307 home pages).
 		return "", statsigMetaStatusError("/index", index.statusCode)
 	}
-	if content, extractErr := extractStatsigMetaContent(index.body); extractErr == nil {
-		return content, nil
-	} else if !errors.Is(extractErr, errStatsigMetaMissing) {
-		return "", extractErr
-	}
 
-	// /index currently returns a branded 404. Only that exact status with a
-	// missing meta is allowed to fall back to the canonical root page.
 	root, err := fetchStatsigMetaResponse(ctx, baseURL, token, lease, "/", do)
 	if err != nil {
 		return "", err
+	}
+	// Follow a single redirect when the egress client returns 3xx as final
+	// (CheckRedirect = ErrUseLastResponse). Grok occasionally 307s the home page.
+	if root.statusCode == http.StatusMovedPermanently || root.statusCode == http.StatusFound || root.statusCode == http.StatusTemporaryRedirect || root.statusCode == http.StatusPermanentRedirect {
+		loc := statsigRedirectLocation(root.header, baseURL, "/")
+		if loc != "" {
+			redirected, redirectErr := fetchStatsigMetaResponse(ctx, baseURL, token, lease, loc, do)
+			if redirectErr != nil {
+				return "", redirectErr
+			}
+			root = redirected
+		}
 	}
 	if root.statusCode < 200 || root.statusCode >= 300 {
 		return "", statsigMetaStatusError("/", root.statusCode)
@@ -314,6 +347,7 @@ func fetchStatsigMetaContentWithDo(ctx context.Context, baseURL, token string, l
 
 type statsigMetaResponse struct {
 	statusCode int
+	header     http.Header
 	body       []byte
 }
 
@@ -349,7 +383,36 @@ func fetchStatsigMetaResponse(ctx context.Context, baseURL, token string, lease 
 	if len(body) > statsigMetaBodyLimit {
 		return statsigMetaResponse{}, statsigMetaOversizeError(path)
 	}
-	return statsigMetaResponse{statusCode: response.StatusCode, body: body}, nil
+	return statsigMetaResponse{statusCode: response.StatusCode, header: response.Header.Clone(), body: body}, nil
+}
+
+func statsigRedirectLocation(header http.Header, baseURL, fallbackPath string) string {
+	if header == nil {
+		return ""
+	}
+	raw := strings.TrimSpace(header.Get("Location"))
+	if raw == "" {
+		return ""
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return ""
+	}
+	if parsed.IsAbs() {
+		base, baseErr := url.Parse(strings.TrimRight(baseURL, "/") + "/")
+		if baseErr != nil || !strings.EqualFold(parsed.Host, base.Host) {
+			// Same-host only; never follow off-site redirects for meta.
+			return ""
+		}
+		if parsed.Path == "" {
+			return fallbackPath
+		}
+		return parsed.Path
+	}
+	if strings.HasPrefix(raw, "/") {
+		return raw
+	}
+	return ""
 }
 
 func statsigMetaStatusError(path string, statusCode int) error {
@@ -443,7 +506,11 @@ func (a *Adapter) applySignedStatsig(ctx context.Context, request *http.Request,
 		}
 		return
 	}
-	a.log().Warn("web_statsig_fetch_failed", "method", request.Method, "path", request.URL.EscapedPath(), "error", err)
+	if errors.Is(err, errStatsigMetaMissing) {
+		a.log().Info("web_statsig_meta_unavailable_continuing_unsigned", "method", request.Method, "path", request.URL.EscapedPath())
+	} else {
+		a.log().Warn("web_statsig_fetch_failed", "method", request.Method, "path", request.URL.EscapedPath(), "error", err)
+	}
 }
 
 // WarmStatsig 只使用一个 Web 账号和一个出口租约预热共享签名，不会逐账号访问上游。

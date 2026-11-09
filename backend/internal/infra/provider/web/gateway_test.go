@@ -68,6 +68,11 @@ func TestGatewayTurnEventsOmitCastleAndPreserveAttachments(t *testing.T) {
 	if strings.Contains(string(responseJSON), "castle_request_token") {
 		t.Fatalf("response.create unexpectedly contains Castle token: %s", responseJSON)
 	}
+	_, withCastle := gatewayTurnEventsWithCastle("conversation-1", "hello", nil, nil, "castle-token-1")
+	castleJSON, _ := json.Marshal(withCastle)
+	if !strings.Contains(string(castleJSON), `"castle_request_token":"castle-token-1"`) {
+		t.Fatalf("response.create missing castle token: %s", castleJSON)
+	}
 }
 
 func TestParseGatewayEventsCollectsConversationTextAndParent(t *testing.T) {

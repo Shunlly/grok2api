@@ -56,6 +56,61 @@ func TestWebQuotaRefreshDeduplicatesPerMode(t *testing.T) {
 	}
 }
 
+func TestQuotaRefreshDropsDeletedAccountWithoutRetry(t *testing.T) {
+	ctx := context.Background()
+	database, err := relational.OpenSQLite(ctx, filepath.Join(t.TempDir(), "quota-refresh-deleted.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	if err := database.InitializeSchema(ctx); err != nil {
+		t.Fatal(err)
+	}
+	accounts := relational.NewAccountRepository(database)
+	credential, _, err := accounts.UpsertByIdentity(ctx, accountdomain.Credential{
+		Provider: accountdomain.ProviderWeb, AuthType: accountdomain.AuthTypeSSO,
+		Name: "deleted-refresh", SourceKey: "deleted-refresh", EncryptedAccessToken: "encrypted",
+		Enabled: true, AuthStatus: accountdomain.AuthStatusActive, WebTier: accountdomain.WebTierSuper,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	adapter := &quotaCountingAdapter{}
+	service := NewService(accounts, nil, nil, nil, provider.NewRegistry(adapter), nil, nil)
+	service.QueueQuotaRefresh(credential.ID, "fast")
+	request := <-service.quotaRefreshQueue
+	if err := accounts.Delete(ctx, credential.ID); err != nil {
+		t.Fatal(err)
+	}
+	service.runQuotaRefresh(ctx, request)
+	if adapter.modeCalls.Load() != 0 {
+		t.Fatalf("deleted account still hit upstream %d times", adapter.modeCalls.Load())
+	}
+	service.quotaRefreshMu.Lock()
+	_, exists := service.quotaRefreshes[request.key]
+	pending := false
+	for _, state := range service.quotaRefreshes {
+		if state != nil && state.pending {
+			pending = true
+			break
+		}
+	}
+	service.quotaRefreshMu.Unlock()
+	if exists || pending {
+		t.Fatalf("deleted account refresh was requeued: exists=%v pending=%v", exists, pending)
+	}
+	// A second pass must stay quiet — no eternal retry loop.
+	service.QueueQuotaRefresh(credential.ID, "fast")
+	second := <-service.quotaRefreshQueue
+	service.runQuotaRefresh(ctx, second)
+	service.quotaRefreshMu.Lock()
+	_, exists = service.quotaRefreshes[second.key]
+	service.quotaRefreshMu.Unlock()
+	if exists {
+		t.Fatal("second deleted-account refresh retained queue state")
+	}
+}
+
 func TestWeeklyQuotaRefreshPreservesTrailingSnapshot(t *testing.T) {
 	ctx := context.Background()
 	database, err := relational.OpenSQLite(ctx, filepath.Join(t.TempDir(), "weekly-quota-refresh.db"))
